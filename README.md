@@ -75,7 +75,7 @@ commentService2,172.17.60.3,userServie,172.17.60.4,true,91,1590975771032
 
 ## 评测环境&启动参数
 - JDK 版本： 1.8
-- jvm内存设置 : -XX:+UseG1GC -XX:MaxGCPauseMillis=500 -Xss256k -Xms8G -Xmx8G -XX:MaxDirectMemorySize=2g
+- jvm内存设置 : -XX:+UseG1GC -XX:MaxGCPauseMillis=500  -Xss256k -Xms6G -Xmx6G -XX:MaxDirectMemorySize=1G
 - 评测机器硬件信息（docker）：
     - 操作系统 CentOS 7.3 64位
     - CPU	16核 3.00GHz
