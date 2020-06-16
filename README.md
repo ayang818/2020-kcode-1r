@@ -31,7 +31,7 @@ commentService2,172.17.60.3,userServie,172.17.60.4,true,91,1590975771032
 
 成功率定义： 
 ```
-单位时间内被调服务成功率 =  （单位时间内被调用结果为ture的次数）/ 单位时间内总被调用次数  【结果换算成百分比，小数点后保留两位有数字,不足两位补0，其余位数直接舍弃】
+单位时间内被调服务成功率 =  （单位时间内被调用结果为ture的次数）/ 单位时间内总被调用次数  【结果换算成百分比，小数点后保留两位数字,不足两位补0，其余位数直接舍弃】
 以上示例数据计算一分钟的成功率
  - （2020-06-01 09:42）userServie在被调成功率: 4/6= 66.66%
  - （2020-06-01 09:42）userServie在172.17.60.4机器上成功率: 2 / 4 = 50.00%
@@ -52,7 +52,7 @@ commentService2,172.17.60.3,userServie,172.17.60.4,true,91,1590975771032
 查询2（checkResponder）：
 输入： 被调服务名、开始时间和结束时间
 输出：平均成功率，无调用结果返回 -1.00%
-平均成功率 = （被调服务在区间内各分钟成功率总和）/ (存在调用的分钟数）【结果换算成百分比，小数点后保留两位有数字,不足两位补0，其他位直接舍弃，不进位】
+平均成功率 = （被调服务在区间内各分钟成功率总和）/ (存在调用的分钟数）【结果换算成百分比，小数点后保留两位数字,不足两位补0，其他位直接舍弃，不进位】
 
 输入示例：userServie, 2020-06-01 09:42, 2020-06-01 09:44
 输出示例：66.66% 
@@ -103,30 +103,30 @@ commentService2,172.17.60.3,userServie,172.17.60.4,true,91,1590975771032
 
 ## 本地测试数据集
 
-为方便下载，将数据集切分为 x 个 100 MB的文件(需要全部下载，才能正常解压)：
+为方便下载，将数据集切分为 12文件，(要全部下载，才能正常解压)：
 
-http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z01
-http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z02
-http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z03
-http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z04
-http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z05
-http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z06
-http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z07
-http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z08
-http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z09
-http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z10
-http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z11
-http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.zip
+- http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z01
+- http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z02
+- http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z03
+- http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z04
+- http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z05
+- http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z06
+- http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z07
+- http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z08
+- http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z09
+- http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z10
+- http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z11
+- http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.zip
 
 测试数据集对应的结果：
 
-http://static.yximgs.com/kos/nlav10305/kcode1/checkResponder.result
-http://static.yximgs.com/kos/nlav10305/kcode1/checkPair.result
+- http://static.yximgs.com/kos/nlav10305/kcode1/checkResponder.result
+- http://static.yximgs.com/kos/nlav10305/kcode1/checkPair.result
 
 测试程序实现可参考本项目的 test 目录中
 
 ## 代码提交
-需要将自己完成的代码push到  https://kcode-git.kuaishou.com/kcode/KcodeRpcMonitor_xxxxxxx 项目下的master分支（team_xxxx是短信中收到的项目名称）
+需要将自己完成的代码push到  https://kcode-git.kuaishou.com/kcode/KcodeRpcMonitor_xxxxxxx 项目下的master分支
 
 ## 评测问题说明
 
@@ -137,7 +137,7 @@ http://static.yximgs.com/kos/nlav10305/kcode1/checkPair.result
 
 - **问题2、构造方法问题：**
 
-  有部分队伍将代码中的 KcodeQuestion 类的构造方法设置成非 public 导致评测失败。
+  有部分队伍将代码中的 KcodeRpcMonitorImpl 类的构造方法设置成非 public 导致评测失败。
 
 - **问3、代码逻辑问题：**
 
