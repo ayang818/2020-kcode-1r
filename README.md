@@ -66,7 +66,7 @@ commentService2,172.17.60.3,userServie,172.17.60.4,true,91,1590975771032
 
 ## 操作说明
 - 报名成功之后，参赛 git 信息会以短信形式发送给选手(已参过热身赛同学，直接跳到第二步)
-- 登录 https://kcode-git.kuaishou.com/，下载[初赛初始代码](https://kcode-git.kuaishou.com/kcode/KcodeRpcMonitor/-/archive/master/KcodeRpcMonitor-master.zip)
+- 登录 https://kcode-git.kuaishou.com/ 或直接下载 [初赛初始代码](https://kcode-git.kuaishou.com/kcode/KcodeRpcMonitor/-/archive/master/KcodeRpcMonitor-master.zip)
 - 将初赛初始代码相关文件提交到自己的参赛项目，项目名称为 KcodeRpcMonitor_xxxxxxx，登录 https://kcode-git.kuaishou.com/ 可以获取
 - pom.xml 中指定了打包插件(无需修改)
 - KcodeRpcMonitorImpl 中需要选手实现两个 prepare() 、checkPair()和checkResponder方法
@@ -75,7 +75,7 @@ commentService2,172.17.60.3,userServie,172.17.60.4,true,91,1590975771032
 
 ## 评测环境&启动参数
 - JDK 版本： 1.8
-- jvm内存设置 : -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Xms6G -Xmx6G -XX:MaxDirectMemorySize=1G
+- jvm内存设置 : -XX:+UseG1GC -XX:MaxGCPauseMillis=500  -Xss256k -Xms6G -Xmx6G -XX:MaxDirectMemorySize=1G
 - 评测机器硬件信息（docker）：
     - 操作系统 CentOS 7.3 64位
     - CPU	16核 3.00GHz
