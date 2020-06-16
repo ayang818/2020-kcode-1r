@@ -75,11 +75,12 @@ commentService2,172.17.60.3,userServie,172.17.60.4,true,91,1590975771032
 
 ## 评测环境&启动参数
 - JDK 版本： 1.8
-- jvm内存设置 : -XX:+UseG1GC -XX:MaxGCPauseMillis=500  -Xss256k -Xms6G -Xmx6G -XX:MaxDirectMemorySize=1G
+- jvm内存设置 : -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Xms6G -Xmx6G -XX:MaxDirectMemorySize=1G
 - 评测机器硬件信息（docker）：
     - 操作系统 CentOS 7.3 64位
     - CPU	16核 3.00GHz
-    - 硬盘：容量 100GB，随机IOPS 1800,  吞吐量 100MB/S
+    - 硬盘：容量 100GB， 吞吐量 > 100MB/S
+- 如果需要输出文件，请使用 /tmp/ 目录
   
 ## 评测标准&排名
 - 系统会默认拉取每个参赛队伍git项目的master代码作为评测程序执行
@@ -98,7 +99,7 @@ commentService2,172.17.60.3,userServie,172.17.60.4,true,91,1590975771032
 - 排名靠前的代码会被review，如发现大量copy代码或引入不符合要求的三方库，将扣分或取消成绩
 - 禁止在代码中输出任何日志输出或是控制台输出，否则无成绩
 - 上传与题目无关的代码，视为作弊，无成绩
-- 
+- 如果
 
 ## 本地测试数据集
 
