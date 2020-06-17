@@ -83,7 +83,7 @@ commentService2,172.17.60.3,userServie,172.17.60.4,true,91,1590975771032
     - 操作系统 CentOS 7.3 64位
     - CPU	16核 3.00GHz
     - 硬盘：容量 100GB， 吞吐量 > 100MB/S
-- 如果需要输出文件，请使用 /tmp/ 目录
+- 如果需要输出文件，请使用 /tmp/ 目录，**禁止使用其他目录**
   
 ## 评测标准&排名
 - 系统会默认拉取每个参赛队伍git项目的master代码作为评测程序执行
@@ -91,9 +91,9 @@ commentService2,172.17.60.3,userServie,172.17.60.4,true,91,1590975771032
 - 成绩评测过程
   - 接收和分析：读取评测文件中全部记录N1条，接受和分析过程耗时T1
   - 查询阶段（checkPair）：执行查询次数N2次，总耗时T2 (N2 > 10w)
-  - 查询阶段（checkResponder）：执行查询次数N3次，总耗时T3 (N3 > 10w)
+  - 查询阶段（checkResponder）：执行查询次数N3次，总耗时T3 (N3 > 1w)
 - 如果查询结果都正确，成绩为 N1/T1/100 + N2/T2 + N3/T3
-- T1不能超过1200秒，T2+T3不能超过1200秒，否则无成绩
+- T1，T2，T3 均不能超过1200秒，否则无成绩
 
 
 ## 要求和限制
@@ -105,7 +105,7 @@ commentService2,172.17.60.3,userServie,172.17.60.4,true,91,1590975771032
 
 ## 本地测试数据集
 
-为方便下载，将数据集切分为 12文件，(要全部下载，才能正常解压)：
+为方便下载，将数据集切分为 12文件(要全部下载，才能正常解压)：
 
 - http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z01
 - http://static.yximgs.com/kos/nlav10305/kcode1/kcodeRpcMonitor.z02
