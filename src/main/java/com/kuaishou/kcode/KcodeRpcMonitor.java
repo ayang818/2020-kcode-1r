@@ -19,7 +19,7 @@ public interface KcodeRpcMonitor {
      * @param caller 主调服务名称
      * @param responder 被调服务名称
      * @param time 需要查询的时间（分钟），格式 yyyy-MM-dd hh:mm
-     * @return 返回在这一分钟内主被调按ip聚合的成功率和P99(按成功率倒排)，无调用反馈空list
+     * @return 返回在这一分钟内主被调按ip聚合的成功率和P99，无调用反馈空list
      */
     List<String> checkPair(String caller, String responder, String time);
 
