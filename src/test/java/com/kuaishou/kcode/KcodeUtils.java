@@ -15,10 +15,11 @@ import java.util.Set;
  */
 public class KcodeUtils {
 
-    public static Map<CheckPairKey, Set<String>> createCheckPairMap(String checkPairFilePath) {
-        Map<CheckPairKey, Set<String>> checkMap = new HashMap<>();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(checkPairFilePath)))) {
-            Set<String> result = null;
+    public static Map<CheckPairKey, Set<CheckPairResult>> createCheckPairMap(String checkPairFilePath) {
+        Map<CheckPairKey, Set<CheckPairResult>> checkMap = new HashMap<>();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(new FileInputStream(checkPairFilePath)))) {
+            Set<CheckPairResult> result = null;
             String line;
             while ((line = reader.readLine()) != null) {
                 if (line.startsWith("checkPair|")) {
@@ -29,7 +30,7 @@ public class KcodeUtils {
                     continue;
                 }
                 if (!line.equals("null")) {
-                    result.add(line);
+                    result.add(new CheckPairResult(line));
                 }
             }
         } catch (IOException e) {
@@ -38,18 +39,20 @@ public class KcodeUtils {
         return checkMap;
     }
 
-    public static Map<CheckResponderKey, String> createCheckResponderMap(String checkResponderFilePath) {
-        Map<CheckResponderKey, String> checkResponderMap = new HashMap<>();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(checkResponderFilePath)))) {
+    public static Map<CheckResponderKey, CheckResponderResult> createCheckResponderMap(String checkResponderFilePath) {
+        Map<CheckResponderKey, CheckResponderResult> checkResponderMap = new HashMap<>();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(new FileInputStream(checkResponderFilePath)))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 String[] split = line.split(",");
                 CheckResponderKey checkPairKey = new CheckResponderKey(split[0], split[1], split[2]);
-                checkResponderMap.put(checkPairKey, split[3]);
+                checkResponderMap.put(checkPairKey, new CheckResponderResult(split[3]));
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
         return checkResponderMap;
     }
+}
 }
