@@ -80,7 +80,7 @@ commentService2,172.17.60.3,userServie,172.17.60.4,true,91,1590975771032
 - jvm内存设置 : -XX:+UseG1GC -XX:MaxGCPauseMillis=500  -Xss256k -Xms6G -Xmx6G -XX:MaxDirectMemorySize=1G
 - 评测机器硬件信息（docker）：
     - 操作系统 CentOS 7.3 64位
-    - CPU	16核 3.00GHz
+    - CPU	8核 3.00GHz
     - 硬盘：容量 100GB， 吞吐量 > 100MB/S
 - 如果需要输出文件，请使用 /tmp/ 目录，**禁止使用其他目录**
   
