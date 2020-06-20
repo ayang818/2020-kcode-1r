@@ -9,7 +9,7 @@ import java.util.Arrays;
  **/
 public class BytesTest {
     public static void main(String[] args) {
-        String s = "\n";
+        String s = ",";
         System.out.println(Arrays.toString(s.getBytes()));
     }
 }
