@@ -8,3 +8,4 @@
 target
 MANIFEST.MF
 .gitlab-ci.yml
+src/test/java/com/kuaishou/kcode/
