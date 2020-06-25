@@ -2,34 +2,39 @@ package com.kuaishou.kcode;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.math.RoundingMode;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.text.DecimalFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.PriorityBlockingQueue;
 
 /**
  * @author kcode
  * Created on 2020-06-01
  * 实际提交时请维持包名和类名不变
  */
-
 public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
-
-    int tm = 0;
     StringBuilder lineBuilder = new StringBuilder();
-    ExecutorService handleThread = Executors.newSingleThreadExecutor();
-    final Semaphore semaphore = new Semaphore(20000);
     SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
-    // callerService+responderService -> (timeStamp -> List{[callerIp, responderIp, isSuccess, costTime], ...})
-    // 总共就128组pair -> 分钟为单位的时间片 -> 这个时间片中的所有调用记录
-    // 顺便存beCalledService  -> (timeStamp -> List{[...], }) 指向同一个Array
-    Map<String, Map<Long, List<String[]>>> dataMap = new ConcurrentHashMap<>();
-
+    // 数据的所有特点 servicePair少；timestamp极少，代表每分钟；ipPair也很少，集中在30左右；多的就是调用次数
+    // 查询1数据结构
+    // Map<(caller, responder), Map<timestamp, Map<(callerIp, responderIp), Object(heap[costTime...costTime], sucTime, totalTime)>>>
+    Map<String, Map<Long, Map<String, Span>>> checkOneMap = new ConcurrentHashMap<>(128);
+    // 查询2数据结构
+    // Map<responder, Map<timestamp, Span>>
+    Map<String, Map<Long, Span>> checkTwoMap = new ConcurrentHashMap<>(64);
+    double inf = 1e-8;
+    public static int m;
+    public static DecimalFormat formatter = new DecimalFormat("#.00");
+    static {
+        formatter.setMaximumFractionDigits(4);
+        formatter.setGroupingSize(0);
+        formatter.setRoundingMode(RoundingMode.FLOOR);
+    }
     // 不要修改访问级别
     public KcodeRpcMonitorImpl() {
     }
@@ -41,24 +46,23 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             FileChannel channel = memoryMappedFile.getChannel();
             // try to use 16KB buffer
             ByteBuffer byteBuffer = ByteBuffer.allocateDirect(1024 * 64);
+            long size = 0;
             while (channel.read(byteBuffer) != -1) {
                 byteBuffer.flip();
                 int remain = byteBuffer.remaining();
                 byte[] bts = new byte[remain];
                 byteBuffer.get(bts, 0, remain);
                 byteBuffer.clear();
-                semaphore.acquire();
-                handleThread.execute(() -> processBlock(bts));
+                processBlock(bts);
+                size += remain;
+                // System.out.println(String.format("%dMB", size / 1024 / 1024));
             }
-            System.out.println(dataMap.size());
-        } catch (IOException | InterruptedException e) {
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     private void processBlock(byte[] block) {
-        tm++;
-        // System.out.println(tm);
         int lastLF = -1;
         int splitterTime = 0;
         int prePos = -1;
@@ -94,7 +98,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         if (lastLF + 1 < block.length) {
             lineBuilder.append(new String(block, lastLF + 1, block.length - lastLF - 1));
         }
-        semaphore.release();
     }
 
     private void handleLine(String[] dataArray) {
@@ -103,18 +106,44 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         String responderService = dataArray[2];
         String responderIp = dataArray[3];
         String isSuccess = dataArray[4];
-        String costTime = dataArray[5];
-        long timestamp = Long.parseLong(dataArray[6]);
-        String[] record = {callerIp, responderIp, isSuccess, costTime};
+        short costTime = Short.parseShort(dataArray[5]);
+        // 向上取整
+        long fullMinute = computeSecond(Long.parseLong(dataArray[6]));
+        //Map<(caller, responder), Map<timestamp, Map<(callerIp, responderIp), Object(list[costTime...costTime], sucTime, totalTime)>>>
+        Map<Long, Map<String, Span>> timestampMap;
+        Map<String, Span> ipPairMap;
+        Span span;
+        String serviceKey = callerService + responderService;
+        String ipKey = callerIp + "," + responderIp;
+        // 实测computeIfAbsent和putIfAbsent都会比较慢，所以使用原始做法
+        if ((timestampMap = checkOneMap.get(serviceKey)) == null) {
+            timestampMap = new ConcurrentHashMap<>();
+            checkOneMap.put(serviceKey, timestampMap);
+        }
+        if ((ipPairMap = timestampMap.get(fullMinute)) == null) {
+            ipPairMap = new ConcurrentHashMap<>();
+            timestampMap.put(fullMinute, ipPairMap);
+        }
+        if ((span = ipPairMap.get(ipKey)) == null) {
+            span = new Span();
+            ipPairMap.put(ipKey, span);
+        }
+        // System.out.println(String.format("checkOneMap size %d, timestampMap size %d, ipPairSize %d, ipPair len %d}", checkOneMap.size(), timestampMap.size(), ipPairMap.size()));
+        span.update(costTime, isSuccess);
 
-        // long fullSecond = computeSecond(timestamp);
-        // Map<Long, List<String[]>> serviceMap = dataMap.computeIfAbsent(callerService + responderService, (k) -> new ConcurrentHashMap<>());
-        // List<String[]> records = serviceMap.computeIfAbsent(fullSecond, (k) -> new ArrayList<>());
-        // records.add(record);
-        //
-        // Map<Long, List<String[]>> responderMap = dataMap.computeIfAbsent(responderIp, (k) -> new ConcurrentHashMap<>());
-        // List<String[]> responderRecords = responderMap.computeIfAbsent(fullSecond, (k) -> new ArrayList<>());
-        // responderRecords.add(record);
+        // 记录第二种查询数据
+        Map<Long, Span> tmpMap;
+        Span dataLessSpan;
+        if ((tmpMap = checkTwoMap.get(responderService)) == null) {
+            tmpMap = new ConcurrentHashMap<>();
+            checkTwoMap.put(responderService, tmpMap);
+        }
+        if ((dataLessSpan = tmpMap.get(fullMinute)) == null) {
+            dataLessSpan = new Span();
+            tmpMap.put(fullMinute, dataLessSpan);
+        }
+        dataLessSpan.sucTime += ("true".equals(isSuccess) ? 1 : 0);
+        dataLessSpan.totalTime += 1;
     }
 
     private void handleLine(String line) {
@@ -129,84 +158,103 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     @Override
     public List<String> checkPair(String caller, String responder, String time) {
         List<String> res = new ArrayList<>();
-        // Date date = null;
-        // try {
-        //     date = dateFormat.parse(time);
-        // } catch (ParseException e) {
-        //     e.printStackTrace();
-        // }
-        // long second = date.getTime();
-        // Map<Long, List<String[]>> pairSecondSliceMap = dataMap.get(caller + responder);
-        // List<String[]> records = pairSecondSliceMap.get(second);
-        // Map<String, PairData> statisticMap = new HashMap<>();
-        // // [callerIp, responderIp, isSuccess, costTime]
-        // String[] record;
-        // for (int i = 0; i < records.size(); i++) {
-        //     record = records.get(i);
-        //     PairData pairData = statisticMap.computeIfAbsent(record[0] + "," + record[1], (k) -> new PairData());
-        //     if ("true".equals(record[2])) {
-        //         pairData.addShownTimes(true);
-        //     } else {
-        //         pairData.addShownTimes(false);
-        //     }
-        //     pairData.addCostTime(Integer.parseInt(record[3]));
-        // }
-        // Set<Map.Entry<String, PairData>> entries = statisticMap.entrySet();
-        // StringBuilder recordBuilder = new StringBuilder();
-        // for (Map.Entry<String, PairData> entry : entries) {
-        //     String key = entry.getKey();
-        //     PairData pairData = entry.getValue();
-        //     String sucRate = String.format("%.2f", (double) pairData.getSucTime() / pairData.getTime());
-        //     List<Integer> costTimeList = pairData.getCostTimeList();
-        //     costTimeList.sort(Comparator.comparingInt(a -> a));
-        //     int p99 = costTimeList.get((int) (costTimeList.size() * 0.99));
-        //     res.add(recordBuilder.append(key).append(",").append(sucRate).append(",").append(p99).toString());
-        //     recordBuilder.delete(0, recordBuilder.length());
-        // }
+        String serviceKey = caller + responder;
+        Map<Long, Map<String, Span>> timestampMap;
+        Map<String, Span> ipPairMap;
+        Date date = null;
+        try {
+            date = dateFormat.parse(time);
+        } catch (ParseException e) {
+            e.printStackTrace();
+        }
+        if ((timestampMap = checkOneMap.get(serviceKey)) != null && date != null) {
+            if ((ipPairMap = timestampMap.get(date.getTime())) != null) {
+                Set<Map.Entry<String, Span>> entries = ipPairMap.entrySet();
+                entries.forEach((entry) -> {
+                    String ipPair = entry.getKey();
+                    Span span = entry.getValue();
 
-        res.add("172.17.60.3,172.17.60.4,50.00%,79");
+                    double sucRate = (double) span.sucTime / span.totalTime;
+                    String strSucRate;
+                    if (sucRate - 0.00 < inf) {
+                        strSucRate = ".00%";
+                    } else {
+                        strSucRate = formatter.format(sucRate * 100) + "%";
+                    }
+                    int p99 = span.getP99();
+                    res.add(ipPair + "," + strSucRate + "," + p99);
+                });
+            }
+        }
         return res;
     }
 
     @Override
     public String checkResponder(String responder, String start, String end) {
-        return "0.00%";
-    }
-}
-
-class PairData {
-    private List<Integer> costTimeList;
-    private int time;
-    private int sucTime;
-    public PairData() {
-        costTimeList = new ArrayList<>();
-        time = 0;
-        sucTime = 0;
-    }
-
-    public void addShownTimes(boolean suc) {
-        if (suc) {
-            sucTime++;
+        Map<Long, Span> timestampMap = checkTwoMap.get(responder);
+        if (timestampMap == null) return "-1.00%";
+        Date startDate = null;
+        Date endDate = null;
+        try {
+            startDate = dateFormat.parse(start);
+            endDate = dateFormat.parse(end);
+        } catch (ParseException e) {
+            e.printStackTrace();
         }
-        time++;
+        long startMil = startDate.getTime();
+        long endMil = endDate.getTime();
+        int times = 0;
+        double sum = 0;
+        Span span;
+        for (long i = startMil; i <= endMil; i += 60000) {
+            span = timestampMap.get(i);
+            if (span != null && span.totalTime != 0) {
+                sum += ((double) span.sucTime / span.totalTime);
+                times++;
+            }
+        }
+        if (sum == 0) return "-1.00%";
+        return formatter.format(sum / times * 100) + "%";
     }
 
-    public void addCostTime(int costTime) {
-        costTimeList.add(costTime);
-    }
+    class Span {
+        // 小顶堆
+        PriorityBlockingQueue<Short> heap;
+        int sucTime;
+        int totalTime;
+        int maxHeapSize = 2000;
 
-    public List<Integer> getCostTimeList() {
-        return costTimeList;
-    }
+        public Span() {
+            sucTime = 0;
+            totalTime = 0;
+        }
 
-    public int getTime() {
-        return time;
-    }
+        public void update(short costTime, String isSuccess) {
+            if (heap == null) heap = new PriorityBlockingQueue<>(1000);
+            totalTime += 1;
+            sucTime += ("true".equals(isSuccess) ? 1 : 0);
+            if (heap.size() >= maxHeapSize && costTime > heap.peek()) {
+                heap.poll();
+                heap.offer(costTime);
+            }
+            if (heap.size() < maxHeapSize) {
+                heap.offer(costTime);
+            }
+        }
 
-    public int getSucTime() {
-        return sucTime;
+        public int getP99() {
+            int res;
+            int targetSize = (int) (totalTime * 0.01) + 1;
+            while (heap.size() > targetSize) {
+                heap.poll();
+            }
+            res = heap.peek();
+            return res;
+        }
     }
 }
+
+
 
 /*
 查询1（checkPair）：
@@ -216,6 +264,25 @@ class PairData {
 输出示例：
 172.17.60.3,172.17.60.4,50.00%,79
 172.17.60.2,172.17.60.3,100.00%,103
+
+1. 查询1对应数据结构
+(caller,responder) -> timestamp -> (callerIp, responderIp) -> (heap[costTime, costTime], sucTime, totalTime)
+Map<(caller, responder), Map<timestamp, Map<(callerIp, responderIp), Object(heap[costTime...costTime], sucTime, totalTime)>>>
+
+imService31,10.190.246.247,openService4,10.163.127.219,true,202,1592301779942
+imService31,10.101.62.175,openService4,10.92.133.81,true,115,1592301779419
+String callerService = dataArray[0];
+String callerIp = dataArray[1];
+String responderService = dataArray[2];
+String responderIp = dataArray[3];
+String isSuccess = dataArray[4];
+String costTime = dataArray[5];
+// 向上取整
+long fullSecond = computeSecond(Long.parseLong(dataArray[6]));
+
+2. 查询2数据结构
+responder -> timestamp -> Object(heap[costTime...costTime], sucTime, totalTime)
+Map<responder, Map<timestamp, Span>>
 
 查询2（checkResponder）：
 输入： 被调服务名、开始时间和结束时间
