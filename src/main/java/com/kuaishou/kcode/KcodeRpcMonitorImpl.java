@@ -57,8 +57,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         } catch (IOException e) {
             e.printStackTrace();
         }
-
-        throw new RuntimeException("max cost time " + max);
     }
 
     private void processBlock(byte[] block) {
