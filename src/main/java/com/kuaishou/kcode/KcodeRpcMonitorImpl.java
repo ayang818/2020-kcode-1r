@@ -26,15 +26,10 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // 查询2数据结构
     // Map<responder, Map<timestamp, Span>>
     Map<String, Map<Long, Span>> checkTwoMap = new ConcurrentHashMap<>(64);
-    double inf = 1e-6;
+    double inf = 1e-4;
     public static final DecimalFormat formatter = new DecimalFormat("0.00");
     private static final String[] dataArray = new String[7];
-
-    static {
-        formatter.setMaximumFractionDigits(2);
-        formatter.setGroupingSize(0);
-        formatter.setRoundingMode(RoundingMode.FLOOR);
-    }
+    int max = -1;
 
     // 不要修改访问级别
     public KcodeRpcMonitorImpl() {
@@ -42,6 +37,10 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
     @Override
     public void prepare(String path) {
+        formatter.setMaximumFractionDigits(2);
+        formatter.setGroupingSize(0);
+        formatter.setRoundingMode(RoundingMode.FLOOR);
+
         try {
             RandomAccessFile memoryMappedFile = new RandomAccessFile(path, "rw");
             FileChannel channel = memoryMappedFile.getChannel();
@@ -58,6 +57,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         } catch (IOException e) {
             e.printStackTrace();
         }
+
+        throw new RuntimeException("max cost time " + max);
     }
 
     private void processBlock(byte[] block) {
@@ -103,7 +104,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         String responderService = dataArray[2];
         String responderIp = dataArray[3];
         String isSuccess = dataArray[4];
-        short costTime = Short.parseShort(dataArray[5]);
+        int costTime = Short.parseShort(dataArray[5]);
+        max = Math.max(costTime, this.max);
         // 向上取整
         long fullMinute = computeSecond(Long.parseLong(dataArray[6]));
         //Map<(caller, responder), Map<timestamp, Map<(callerIp, responderIp), Object(list[costTime...costTime], sucTime, totalTime)>>>
@@ -243,17 +245,17 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         int sucTime;
         int totalTime;
         // 桶排
-        short[] bucket = new short[200];
+        int[] bucket = new int[200];
 
         public Span() {
             sucTime = 0;
             totalTime = 0;
         }
 
-        public void update(short costTime, String isSuccess) {
+        public void update(int costTime, String isSuccess) {
             // bucket不够大就扩容！
             if (costTime >= bucket.length) {
-                short[] newBct = new short[costTime + 30];
+                int[] newBct = new int[costTime + 30];
                 System.arraycopy(bucket, 0, newBct, 0, bucket.length);
                 bucket = newBct;
             }
