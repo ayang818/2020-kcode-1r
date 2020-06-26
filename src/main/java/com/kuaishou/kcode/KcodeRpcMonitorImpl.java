@@ -11,6 +11,7 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+// TODO 寻找边界情况和可能出现问题的代码吧
 /**
  * @author kcode
  * Created on 2020-06-01
@@ -26,10 +27,9 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // 查询2数据结构
     // Map<responder, Map<timestamp, Span>>
     Map<String, Map<Long, Span>> checkTwoMap = new ConcurrentHashMap<>(64);
-    double inf = 1e-4;
+    double eps = 1e-4;
     public static final DecimalFormat formatter = new DecimalFormat("0.00");
     private static final String[] dataArray = new String[7];
-    int max = -1;
 
     // 不要修改访问级别
     public KcodeRpcMonitorImpl() {
@@ -102,8 +102,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         String responderService = dataArray[2];
         String responderIp = dataArray[3];
         String isSuccess = dataArray[4];
-        int costTime = Short.parseShort(dataArray[5]);
-        max = Math.max(costTime, this.max);
+        short costTime = Short.parseShort(dataArray[5]);
         // 向上取整
         long fullMinute = computeSecond(Long.parseLong(dataArray[6]));
         //Map<(caller, responder), Map<timestamp, Map<(callerIp, responderIp), Object(list[costTime...costTime], sucTime, totalTime)>>>
@@ -148,7 +147,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     }
 
     private long computeSecond(long timestamp) {
-        return timestamp / 60000 * 60000;
+        return (timestamp / 60000) * 60000;
     }
 
     @Override
@@ -175,7 +174,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                     if (span.sucTime == 0) {
                         strSucRate = ".00%";
                     } else {
-                        strSucRate = formatter.format(sucRate * 100) + "%";
+                        strSucRate = formatDouble(sucRate * 100) + "%";
                     }
                     int p99 = span.getP99();
                     res.add(ipPair + "," + strSucRate + "," + p99);
@@ -200,26 +199,24 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         }
         long startMil = startDate.getTime();
         long endMil = endDate.getTime();
-        int times = 0;
+        double times = 0;
         double sum = 0;
         Span span;
         for (long i = startMil; i <= endMil; i += 60000) {
             span = timestampMap.get(i);
             if (span != null && span.totalTime != 0) {
-                // String str = formatDouble((double) span.sucTime / span.totalTime * 100);
-                String format = formatter.format((double) span.sucTime / span.totalTime * 100);
-                double num = Double.parseDouble(format);
-                sum += num;
+                String str = formatDouble((double) span.sucTime / span.totalTime * 100);
+                sum += Double.parseDouble(str);
                 times++;
             }
         }
-        if (sum - 0.00 < inf) {
+        if (sum == 0) {
             if (times == 0) {
                 return "-1.00%";
             }
             return ".00%";
         }
-        String s = formatter.format(sum / times);
+        String s = formatDouble(sum / times);
         return s + "%";
     }
 
@@ -243,17 +240,17 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         int sucTime;
         int totalTime;
         // 桶排
-        int[] bucket = new int[200];
+        short[] bucket = new short[200];
 
         public Span() {
             sucTime = 0;
             totalTime = 0;
         }
 
-        public void update(int costTime, String isSuccess) {
+        public void update(short costTime, String isSuccess) {
             // bucket不够大就扩容！
             if (costTime >= bucket.length) {
-                int[] newBct = new int[costTime + 30];
+                short[] newBct = new short[costTime + 30];
                 System.arraycopy(bucket, 0, newBct, 0, bucket.length);
                 bucket = newBct;
             }
