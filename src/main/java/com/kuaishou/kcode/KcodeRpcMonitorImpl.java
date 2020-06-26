@@ -257,6 +257,9 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             totalTime += 1;
             sucTime += ("true".equals(isSuccess) ? 1 : 0);
             bucket[costTime] += 1;
+            if (bucket[costTime] > Short.MAX_VALUE) {
+                throw new RuntimeException("out!!");
+            }
         }
 
         public int getP99() {
