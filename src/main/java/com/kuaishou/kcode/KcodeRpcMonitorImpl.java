@@ -27,8 +27,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // Map<responder, Map<timestamp, Span>>
     Map<String, Map<Long, Span>> checkTwoMap = new ConcurrentHashMap<>(64);
     double inf = 1e-6;
-    public static int m;
     public static DecimalFormat formatter = new DecimalFormat("#.00");
+    private static final String[] dataArray = new String[7];
 
     static {
         formatter.setMaximumFractionDigits(2);
@@ -57,12 +57,11 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 byteBuffer.clear();
                 processBlock(bts);
                 size += remain;
-                // System.out.println(String.format("%dMB", size / 1024 / 1024));
+                System.out.println(String.format("%dMB", size / 1024 / 1024));
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
-        throw new RuntimeException(String.format("cost %d", System.currentTimeMillis() - start));
     }
 
     private void processBlock(byte[] block) {
@@ -71,7 +70,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         int prePos = -1;
         boolean firstLine = true;
         String line;
-        String[] dataArray = new String[7];
         for (int i = 0; i < block.length; i++) {
             byte bt = block[i];
             // 逗号
@@ -131,7 +129,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             span = new Span();
             ipPairMap.put(ipKey, span);
         }
-        // System.out.println(String.format("checkOneMap size %d, timestampMap size %d, ipPairSize %d, ipPair len %d}", checkOneMap.size(), timestampMap.size(), ipPairMap.size()));
         span.update(costTime, isSuccess);
 
         // 记录第二种查询数据
@@ -179,7 +176,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
                     double sucRate = (double) span.sucTime / span.totalTime;
                     String strSucRate;
-                    if (sucRate - 0.00 < inf) {
+                    if (sucRate - 0 < inf) {
                         strSucRate = ".00%";
                     } else {
                         strSucRate = formatter.format(sucRate * 100) + "%";
@@ -224,12 +221,10 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     }
 
     class Span {
-        // 小顶堆
-        // Queue<Short> heap;
-        // int maxHeapSize = 200000;
         int sucTime;
         int totalTime;
-        List<Short> list;
+        // 桶排
+        short[] bucket = new short[400];
 
         public Span() {
             sucTime = 0;
@@ -237,45 +232,25 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         }
 
         public void update(short costTime, String isSuccess) {
-            if (list == null) list = new ArrayList<>();
+            if (costTime >= bucket.length) {
+                short[] newBct = new short[costTime + 50];
+                System.arraycopy(bucket, 0, newBct, 0, bucket.length);
+                bucket = newBct;
+            }
             totalTime += 1;
             sucTime += ("true".equals(isSuccess) ? 1 : 0);
-            list.add(costTime);
+            bucket[costTime] += 1;
         }
 
         public int getP99() {
-            int targetSize = (int) (totalTime * 0.01) + 1;
-            list.sort(Comparator.comparingInt(o -> o));
-            return list.get(list.size() - targetSize);
+            int pos = (int) (totalTime * 0.01) + 1;
+            int len = bucket.length;
+            for (int i = len - 1; i >= 0; i--) {
+                pos -= bucket[i];
+                if (pos <= 0) return i;
+            }
+            return 0;
         }
-
-        // public void update(short costTime, String isSuccess) {
-        //     if (heap == null) heap = new PriorityBlockingQueue<>(5);
-        //     totalTime += 1;
-        //     sucTime += ("true".equals(isSuccess) ? 1 : 0);
-        //     if (heap.size() >= maxHeapSize && costTime > heap.peek()) {
-        //         heap.poll();
-        //         heap.offer(costTime);
-        //     }
-        //     if (heap.size() < maxHeapSize) {
-        //         heap.offer(costTime);
-        //     }
-        // }
-        //
-        // public int getP99() {
-        //     int res;
-        //     int targetSize = (int) (totalTime * 0.01) + 1;
-        //     System.out.println(totalTime);
-        //     while (heap.size() > targetSize) {
-        //         heap.poll();
-        //     }
-        //     res = heap.peek();
-        //     // while (heap.size() > 0) {
-        //     //     System.out.print(heap.poll() + " ");
-        //     // }
-        //     // System.out.println();
-        //     return res;
-        // }
     }
 }
 
