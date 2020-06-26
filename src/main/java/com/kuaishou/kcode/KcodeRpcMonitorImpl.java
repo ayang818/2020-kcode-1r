@@ -175,7 +175,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                     if (span.sucTime == 0) {
                         strSucRate = ".00%";
                     } else {
-                        strSucRate = formatDouble(sucRate * 100) + "%";
+                        strSucRate = formatter.format(sucRate * 100) + "%";
                     }
                     int p99 = span.getP99();
                     res.add(ipPair + "," + strSucRate + "," + p99);
