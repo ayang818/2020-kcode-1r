@@ -206,8 +206,9 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         for (long i = startMil; i <= endMil; i += 60000) {
             span = timestampMap.get(i);
             if (span != null && span.totalTime != 0) {
-                String str = formatDouble((double) span.sucTime / span.totalTime * 100);
-                double num = Double.parseDouble(str);
+                // String str = formatDouble((double) span.sucTime / span.totalTime * 100);
+                String format = formatter.format((double) span.sucTime / span.totalTime * 100);
+                double num = Double.parseDouble(format);
                 sum += num;
                 times++;
             }
@@ -218,7 +219,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             }
             return ".00%";
         }
-        return formatDouble(sum / times) + "%";
+        String s = formatter.format(sum / times);
+        return s + "%";
     }
 
     public String formatDouble(double num) {
