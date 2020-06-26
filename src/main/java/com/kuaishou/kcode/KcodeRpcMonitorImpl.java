@@ -42,7 +42,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         formatter.setRoundingMode(RoundingMode.FLOOR);
 
         try {
-            RandomAccessFile memoryMappedFile = new RandomAccessFile(path, "rw");
+            RandomAccessFile memoryMappedFile = new RandomAccessFile(path, "r");
             FileChannel channel = memoryMappedFile.getChannel();
             // try to use 16KB buffer
             ByteBuffer byteBuffer = ByteBuffer.allocateDirect(1024 * 64);
@@ -55,7 +55,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 byteBuffer.clear();
                 processBlock(bts);
                 size += 64;
-                if (size / 1024 >= 10000) throw new RuntimeException("why");
             }
         } catch (IOException e) {
             e.printStackTrace();
