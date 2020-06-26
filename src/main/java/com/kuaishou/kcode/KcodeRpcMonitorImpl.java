@@ -1,8 +1,5 @@
 package com.kuaishou.kcode;
 
-import com.util.PriorityDeque;
-import com.util.concurrent.PriorityBlockingDeque;
-
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.math.RoundingMode;
@@ -13,7 +10,6 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.PriorityBlockingQueue;
 
 /**
  * @author kcode
