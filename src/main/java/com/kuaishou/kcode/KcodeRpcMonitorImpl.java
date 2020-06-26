@@ -27,7 +27,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // Map<responder, Map<timestamp, Span>>
     Map<String, Map<Long, Span>> checkTwoMap = new ConcurrentHashMap<>(64);
     double inf = 1e-6;
-    public static DecimalFormat formatter = new DecimalFormat("0.00");
+    public static final DecimalFormat formatter = new DecimalFormat("0.00");
     private static final String[] dataArray = new String[7];
 
     static {
@@ -47,7 +47,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             FileChannel channel = memoryMappedFile.getChannel();
             // try to use 16KB buffer
             ByteBuffer byteBuffer = ByteBuffer.allocateDirect(1024 * 64);
-            long size = 0;
             while (channel.read(byteBuffer) != -1) {
                 byteBuffer.flip();
                 int remain = byteBuffer.remaining();
@@ -55,8 +54,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 byteBuffer.get(bts, 0, remain);
                 byteBuffer.clear();
                 processBlock(bts);
-                size += remain;
-                // System.out.println(String.format("%dMB", size / 1024 / 1024));
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -114,7 +111,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         Map<String, Span> ipPairMap;
         Span span;
         String serviceKey = callerService + responderService;
-        String ipKey = callerIp + "," + responderIp;
+        String ipPairKey = callerIp + "," + responderIp;
         // 实测computeIfAbsent和putIfAbsent都会比较慢，所以使用原始做法
         if ((timestampMap = checkOneMap.get(serviceKey)) == null) {
             timestampMap = new ConcurrentHashMap<>();
@@ -124,9 +121,9 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             ipPairMap = new ConcurrentHashMap<>();
             timestampMap.put(fullMinute, ipPairMap);
         }
-        if ((span = ipPairMap.get(ipKey)) == null) {
+        if ((span = ipPairMap.get(ipPairKey)) == null) {
             span = new Span();
-            ipPairMap.put(ipKey, span);
+            ipPairMap.put(ipPairKey, span);
         }
         span.update(costTime, isSuccess);
 
@@ -178,8 +175,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                     if (span.sucTime == 0) {
                         strSucRate = ".00%";
                     } else {
-                        strSucRate = formatter.format(sucRate * 100) + "%";
-                        // System.out.println(strSucRate);
+                        strSucRate = formatDouble(sucRate * 100) + "%";
                     }
                     int p99 = span.getP99();
                     res.add(ipPair + "," + strSucRate + "," + p99);
@@ -210,15 +206,35 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         for (long i = startMil; i <= endMil; i += 60000) {
             span = timestampMap.get(i);
             if (span != null && span.totalTime != 0) {
-                sum += ((double) span.sucTime / span.totalTime);
+                String str = formatDouble((double) span.sucTime / span.totalTime * 100);
+                double num = Double.parseDouble(str);
+                sum += num;
                 times++;
             }
         }
-        if (sum - 0 < inf) {
-            if (times == 0) return "-1.00%";
+        if (sum - 0.00 < inf) {
+            if (times == 0) {
+                return "-1.00%";
+            }
             return ".00%";
         }
-        return formatter.format(sum / times * 100) + "%";
+        return formatDouble(sum / times) + "%";
+    }
+
+    public String formatDouble(double num) {
+        String tmp = String.valueOf(num);
+        int i = tmp.indexOf(".");
+        String res;
+        int len = tmp.length();
+        if (i + 3 <= len) {
+            res = tmp.substring(0, i + 3);
+        } else {
+            res = tmp;
+            for (int j = len; j < i + 3; j++) {
+                res += "0";
+            }
+        }
+        return res;
     }
 
     static class Span {
