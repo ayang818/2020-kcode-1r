@@ -26,7 +26,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // 查询2数据结构
     // Map<responder, Map<timestamp, Span>>
     Map<String, Map<Long, Span>> checkTwoMap = new ConcurrentHashMap<>(64);
-    double inf = 1e-8;
+    double inf = 1e-6;
     public static int m;
     public static DecimalFormat formatter = new DecimalFormat("#.00");
 
@@ -214,7 +214,10 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 times++;
             }
         }
-        if (sum == 0) return "-1.00%";
+        if (sum - 0 < inf) {
+            if (times == 0) return "-1.00%";
+            return ".00%";
+        }
         return formatter.format(sum / times * 100) + "%";
     }
 
