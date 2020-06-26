@@ -42,6 +42,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
     @Override
     public void prepare(String path) {
+        long start = System.currentTimeMillis();
         try {
             RandomAccessFile memoryMappedFile = new RandomAccessFile(path, "rw");
             FileChannel channel = memoryMappedFile.getChannel();
@@ -61,6 +62,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        throw new RuntimeException(String.format("cost %d", System.currentTimeMillis() - start));
     }
 
     private void processBlock(byte[] block) {
