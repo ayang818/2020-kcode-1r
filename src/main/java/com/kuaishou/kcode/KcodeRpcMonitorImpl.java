@@ -46,6 +46,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             FileChannel channel = memoryMappedFile.getChannel();
             // try to use 16KB buffer
             ByteBuffer byteBuffer = ByteBuffer.allocateDirect(1024 * 64);
+            int size = 0;
             while (channel.read(byteBuffer) != -1) {
                 byteBuffer.flip();
                 int remain = byteBuffer.remaining();
@@ -53,6 +54,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 byteBuffer.get(bts, 0, remain);
                 byteBuffer.clear();
                 processBlock(bts);
+                size += 64;
+                if (size / 1024 >= 10000) throw new RuntimeException("why");
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -149,7 +152,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     private long computeSecond(long timestamp) {
         return (timestamp / 60000) * 60000;
     }
-    int tm = 0;
+
+    // TODO 第一个就错了
     @Override
     public List<String> checkPair(String caller, String responder, String time) {
         List<String> res = new ArrayList<>();
@@ -181,8 +185,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 });
             }
         }
-        tm++;
-        if (tm >= 2) throw new RuntimeException("what???");
         return res;
     }
 
