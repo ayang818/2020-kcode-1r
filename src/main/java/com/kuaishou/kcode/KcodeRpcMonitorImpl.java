@@ -149,7 +149,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     private long computeSecond(long timestamp) {
         return (timestamp / 60000) * 60000;
     }
-
+    int tm = 0;
     @Override
     public List<String> checkPair(String caller, String responder, String time) {
         List<String> res = new ArrayList<>();
@@ -181,6 +181,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 });
             }
         }
+        tm++;
+        if (tm > 1000) throw new RuntimeException("what???");
         return res;
     }
 
@@ -257,9 +259,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             totalTime += 1;
             sucTime += ("true".equals(isSuccess) ? 1 : 0);
             bucket[costTime] += 1;
-            if (bucket[costTime] > Short.MAX_VALUE) {
-                throw new RuntimeException("out!!");
-            }
         }
 
         public int getP99() {
