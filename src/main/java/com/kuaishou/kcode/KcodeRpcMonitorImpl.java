@@ -239,8 +239,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     static class Span {
         int sucTime;
         int totalTime;
-        // 桶排
-        short[] bucket = new short[200];
+        // 桶排,数量要是超过Short.MAX_VALUE就错了！！！
+        int[] bucket = new int[200];
 
         public Span() {
             sucTime = 0;
@@ -250,7 +250,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         public void update(short costTime, String isSuccess) {
             // bucket不够大就扩容！
             if (costTime >= bucket.length) {
-                short[] newBct = new short[costTime + 30];
+                int[] newBct = new int[costTime + 30];
                 System.arraycopy(bucket, 0, newBct, 0, bucket.length);
                 bucket = newBct;
             }
