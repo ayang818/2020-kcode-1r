@@ -182,7 +182,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             }
         }
         tm++;
-        if (tm > 1000) throw new RuntimeException("what???");
+        if (tm > 2) throw new RuntimeException("what???");
         return res;
     }
 
