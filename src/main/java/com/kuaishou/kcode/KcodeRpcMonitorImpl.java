@@ -1,5 +1,8 @@
 package com.kuaishou.kcode;
 
+import com.util.PriorityDeque;
+import com.util.concurrent.PriorityBlockingDeque;
+
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.math.RoundingMode;
@@ -30,11 +33,13 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     double inf = 1e-8;
     public static int m;
     public static DecimalFormat formatter = new DecimalFormat("#.00");
+
     static {
-        formatter.setMaximumFractionDigits(4);
+        formatter.setMaximumFractionDigits(2);
         formatter.setGroupingSize(0);
         formatter.setRoundingMode(RoundingMode.FLOOR);
     }
+
     // 不要修改访问级别
     public KcodeRpcMonitorImpl() {
     }
@@ -219,10 +224,11 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
     class Span {
         // 小顶堆
-        PriorityBlockingQueue<Short> heap;
+        // Queue<Short> heap;
+        // int maxHeapSize = 200000;
         int sucTime;
         int totalTime;
-        int maxHeapSize = 2000;
+        List<Short> list;
 
         public Span() {
             sucTime = 0;
@@ -230,27 +236,45 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         }
 
         public void update(short costTime, String isSuccess) {
-            if (heap == null) heap = new PriorityBlockingQueue<>(1000);
+            if (list == null) list = new ArrayList<>();
             totalTime += 1;
             sucTime += ("true".equals(isSuccess) ? 1 : 0);
-            if (heap.size() >= maxHeapSize && costTime > heap.peek()) {
-                heap.poll();
-                heap.offer(costTime);
-            }
-            if (heap.size() < maxHeapSize) {
-                heap.offer(costTime);
-            }
+            list.add(costTime);
         }
 
         public int getP99() {
-            int res;
             int targetSize = (int) (totalTime * 0.01) + 1;
-            while (heap.size() > targetSize) {
-                heap.poll();
-            }
-            res = heap.peek();
-            return res;
+            list.sort(Comparator.comparingInt(o -> o));
+            return list.get(list.size() - targetSize);
         }
+
+        // public void update(short costTime, String isSuccess) {
+        //     if (heap == null) heap = new PriorityBlockingQueue<>(5);
+        //     totalTime += 1;
+        //     sucTime += ("true".equals(isSuccess) ? 1 : 0);
+        //     if (heap.size() >= maxHeapSize && costTime > heap.peek()) {
+        //         heap.poll();
+        //         heap.offer(costTime);
+        //     }
+        //     if (heap.size() < maxHeapSize) {
+        //         heap.offer(costTime);
+        //     }
+        // }
+        //
+        // public int getP99() {
+        //     int res;
+        //     int targetSize = (int) (totalTime * 0.01) + 1;
+        //     System.out.println(totalTime);
+        //     while (heap.size() > targetSize) {
+        //         heap.poll();
+        //     }
+        //     res = heap.peek();
+        //     // while (heap.size() > 0) {
+        //     //     System.out.print(heap.poll() + " ");
+        //     // }
+        //     // System.out.println();
+        //     return res;
+        // }
     }
 }
 
