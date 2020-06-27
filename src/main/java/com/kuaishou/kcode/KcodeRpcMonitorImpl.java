@@ -1,13 +1,8 @@
 package com.kuaishou.kcode;
 
-import sun.nio.ch.ThreadPool;
-
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -26,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // 行数
-    private static final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(6, 6, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+    private static final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(8, 8, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
     StringBuilder lineBuilder = new StringBuilder();
     static SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
     // 数据的所有特点 servicePair少；timestamp极少，代表每分钟；ipPair也很少，集中在30左右；多的就是调用次数
@@ -66,9 +61,10 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     @Override
     public void prepare(String path) {
         try {
-            // 64KB的缓冲区
+            // 64KB，打满缓冲区
             BufferedReader bufferedReader = new BufferedReader(new FileReader(path), 64 * 1024);
             String line;
+            // 此数值越小，任务越多
             int threshold = 25000;
             List<String> list = new ArrayList<>(threshold);
             while ((line = bufferedReader.readLine()) != null) {
