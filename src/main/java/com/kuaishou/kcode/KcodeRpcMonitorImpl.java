@@ -21,10 +21,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // 行数
-    private static final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(6, 6, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+    private static final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(8, 8, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
     StringBuilder lineBuilder = new StringBuilder();
     static SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
-    // 数据的所有特点 servicePair少；timestamp极少，代表每分钟；ipPair也很少，集中在30左右；多的就是调用次数
+    // 数据的所有特点 servicePair极少；timestamp极少，代表每分钟；ipPair也很少，集中在30左右；多的就是调用次数
     // 查询1数据结构
     // Map<(caller, responder), Map<timestamp, Map<(callerIp, responderIp), Object(heap[costTime...costTime], sucTime, totalTime)>>>
     Map<Integer, Map<Long, Map<String, Span>>> checkOneMap = new ConcurrentHashMap<>(128);
@@ -34,9 +34,9 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     double eps = 1e-4;
     private static final String[] dataArray = new String[7];
     private static long startTime = 0;
-    private static long[] runMonthMillisCount = new long[13];
-    private static long[] runYearMonthDayCount = new long[]{0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-    private static long[] normalYearMonthDayCount = new long[]{0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    private static final long[] runMonthMillisCount = new long[13];
+    private static final long[] runYearMonthDayCount = new long[]{0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    private static final long[] normalYearMonthDayCount = new long[]{0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 
     static {
         Date startDate = null;
@@ -79,7 +79,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 final List<String> tmp = list;
                 threadPool.execute(() -> handleLines(tmp));
             }
-            while (threadPool.getQueue().size() != 0) {}
+            while (threadPool.getQueue().size() != 0) {
+            }
             // RandomAccessFile memoryMappedFile = new RandomAccessFile(path, "r");
             // FileChannel channel = memoryMappedFile.getChannel();
             // // try to use 16KB buffer
@@ -170,7 +171,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     @Override
     public List<String> checkPair(String caller, String responder, String time) {
         List<String> res = new ArrayList<>();
-        Integer serviceKey = hash(caller , responder);
+        Integer serviceKey = hash(caller, responder);
         Map<Long, Map<String, Span>> timestampMap;
         Map<String, Span> ipPairMap;
         long timeMillis = parseDate(time);
@@ -209,8 +210,9 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         for (long i = startMil; i <= endMil; i += 60000) {
             span = timestampMap.get(i);
             if (span != null && span.getSucTime() != 0) {
-                String str = formatDouble((double) span.getSucTime() / span.getTotalTime() * 100);
-                sum += Double.parseDouble(str);
+                // String str = formatDouble((double) span.getSucTime() / span.getTotalTime() * 100);
+                // sum += Double.parseDouble(str);
+                sum += ((double) span.getSucTime() / span.getTotalTime() * 100);
                 times++;
             }
         }
@@ -243,6 +245,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
     /**
      * TODO 当前只对于2020的日志有作用，晚点改
+     *
      * @param dateStr dateString format 2020-06-01 09:42
      * @return
      */
