@@ -12,7 +12,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-// TODO 减少hash次数
+// TODO 寻找可以优化的查询结构
 
 /**
  * @author kcode
@@ -60,13 +60,12 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
     @Override
     public void prepare(String path) {
-        long start = System.currentTimeMillis();
         try {
             // 64KB，打满吞吐量
             BufferedReader bufferedReader = new BufferedReader(new FileReader(path), 64 * 1024);
             String line;
-            // 此数值越小，任务越多
-            int threshold = 25000;
+            // 此数值越小，任务越多，执行时间越短
+            int threshold = 10000;
             List<String> list = new ArrayList<>(threshold);
             while ((line = bufferedReader.readLine()) != null) {
                 list.add(line);
@@ -98,7 +97,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        throw new RuntimeException(String.format("%d", System.currentTimeMillis() - start));
     }
 
     private void handleLine(String[] dataArray) {
