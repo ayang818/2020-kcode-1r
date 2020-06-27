@@ -2,16 +2,15 @@ package com.kuaishou.kcode;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.math.RoundingMode;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.text.DecimalFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-// TODO 寻找边界情况和可能出现问题的代码吧
+// TODO 减少hash次数
+
 /**
  * @author kcode
  * Created on 2020-06-01
@@ -19,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     StringBuilder lineBuilder = new StringBuilder();
-    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
+    static SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
     // 数据的所有特点 servicePair少；timestamp极少，代表每分钟；ipPair也很少，集中在30左右；多的就是调用次数
     // 查询1数据结构
     // Map<(caller, responder), Map<timestamp, Map<(callerIp, responderIp), Object(heap[costTime...costTime], sucTime, totalTime)>>>
@@ -28,19 +27,45 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // Map<responder, Map<timestamp, Span>>
     Map<String, Map<Long, Span>> checkTwoMap = new ConcurrentHashMap<>(64);
     double eps = 1e-4;
-    public static final DecimalFormat formatter = new DecimalFormat("0.00");
     private static final String[] dataArray = new String[7];
+    private static long startTime = 0;
+    private static long[] runMonthMillisCount = new long[13];
+    private static long[] runYearMonthDayCount = new long[]{0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    private static long[] normalYearMonthDayCount = new long[]{0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+
+    static {
+        Date startDate = null;
+        try {
+            // 一天 86400000
+            // 1577808000000
+            startDate = dateFormat.parse("2020-01-01 00:00");
+            startTime = startDate.getTime();
+        } catch (ParseException e) {
+            e.printStackTrace();
+        }
+        runMonthMillisCount[1] = 0;
+        for (int i = 2; i <= 12; i++) {
+            runMonthMillisCount[i] = runMonthMillisCount[i - 1] + 86400000 * runYearMonthDayCount[i - 1];
+        }
+    }
 
     // 不要修改访问级别
     public KcodeRpcMonitorImpl() {
     }
 
+    // public static void main(String[] args) {
+    //     try {
+    //         long time = dateFormat.parse("2020-06-01 09:42").getTime();
+    //         long l = parseDate("2020-06-01 09:42");
+    //         System.out.println(time);
+    //         System.out.println(l);
+    //         System.out.println(time == l);
+    //     } catch (ParseException e) {
+    //         e.printStackTrace();
+    //     }
+    // }
     @Override
     public void prepare(String path) {
-        formatter.setMaximumFractionDigits(2);
-        formatter.setGroupingSize(0);
-        formatter.setRoundingMode(RoundingMode.FLOOR);
-
         try {
             RandomAccessFile memoryMappedFile = new RandomAccessFile(path, "r");
             FileChannel channel = memoryMappedFile.getChannel();
@@ -152,21 +177,15 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         return (timestamp / 60000) * 60000;
     }
 
-    // TODO 第一个就错了
     @Override
     public List<String> checkPair(String caller, String responder, String time) {
         List<String> res = new ArrayList<>();
         String serviceKey = caller + responder;
         Map<Long, Map<String, Span>> timestampMap;
         Map<String, Span> ipPairMap;
-        Date date = null;
-        try {
-            date = dateFormat.parse(time);
-        } catch (ParseException e) {
-            e.printStackTrace();
-        }
-        if ((timestampMap = checkOneMap.get(serviceKey)) != null && date != null) {
-            if ((ipPairMap = timestampMap.get(date.getTime())) != null) {
+        long timeMillis = parseDate(time);
+        if ((timestampMap = checkOneMap.get(serviceKey)) != null) {
+            if ((ipPairMap = timestampMap.get(timeMillis)) != null) {
                 Set<Map.Entry<String, Span>> entries = ipPairMap.entrySet();
                 entries.forEach((entry) -> {
                     String ipPair = entry.getKey();
@@ -191,17 +210,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     public String checkResponder(String responder, String start, String end) {
         Map<Long, Span> timestampMap = checkTwoMap.get(responder);
         if (timestampMap == null) return "-1.00%";
-        Date startDate = null;
-        Date endDate = null;
-        try {
-            // TODO rewrite parse
-            startDate = dateFormat.parse(start);
-            endDate = dateFormat.parse(end);
-        } catch (ParseException e) {
-            e.printStackTrace();
-        }
-        long startMil = startDate.getTime();
-        long endMil = endDate.getTime();
+        long startMil = parseDate(start);
+        long endMil = parseDate(end);
         double times = 0;
         double sum = 0;
         Span span;
@@ -236,6 +246,25 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 res += "0";
             }
         }
+        return res;
+    }
+
+
+    /**
+     * TODO 当前只对于2020的日志有作用，晚点改
+     * @param dateStr dateString format 2020-06-01 09:42
+     * @return
+     */
+    public static long parseDate(String dateStr) {
+        long res = startTime;
+        int mouth = Integer.parseInt(dateStr.substring(5, 7));
+        int day = Integer.parseInt(dateStr.substring(8, 10));
+        int hour = Integer.parseInt(dateStr.substring(11, 13));
+        int minutes = Integer.parseInt(dateStr.substring(14, 16));
+        res += runMonthMillisCount[mouth];
+        res += (day - 1) * 86400000;
+        res += hour * 3600000;
+        res += minutes * 60000;
         return res;
     }
 
