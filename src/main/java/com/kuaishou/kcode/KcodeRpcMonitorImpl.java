@@ -26,11 +26,13 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     static SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
     // 数据的所有特点 servicePair极少；timestamp极少，代表每分钟；ipPair也很少，集中在30左右；多的就是调用次数
     // 查询1数据结构
-    // Map<(caller, responder), Map<timestamp, Map<(callerIp, responderIp), Object(heap[costTime...costTime], sucTime, totalTime)>>>
+    // Map<(caller, responder), Map<timestamp, Map<(callerIp, responderIp), Span>>>
     Map<Integer, Map<Long, Map<String, Span>>> checkOneMap = new ConcurrentHashMap<>(128);
     // 查询2数据结构
     // Map<responder, Map<timestamp, Span>>
-    Map<String, Map<Long, Span>> checkTwoMap = new ConcurrentHashMap<>(64);
+    // version2: Map<responder, Span[]> pos = [(timestamp - startTime) / 60000] Span[].length <> 45000
+    Map<String, Span[]> checkTwoMap = new ConcurrentHashMap<>(64);
+    private static final int spanCapacity = 500000;
     double eps = 1e-4;
     private static final String[] dataArray = new String[7];
     private static long startTime = 0;
@@ -131,15 +133,16 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         span.update(costTime, isSuccess);
 
         // 记录第二种查询数据
-        Map<Long, Span> tmpMap;
+        Span[] spans;
         Span dataLessSpan;
-        if ((tmpMap = checkTwoMap.get(responderService)) == null) {
-            tmpMap = new ConcurrentHashMap<>();
-            checkTwoMap.put(responderService, tmpMap);
+        if ((spans = checkTwoMap.get(responderService)) == null) {
+            spans = new Span[spanCapacity];
+            checkTwoMap.put(responderService, spans);
         }
-        if ((dataLessSpan = tmpMap.get(fullMinute)) == null) {
+        int hash = minuteHash(fullMinute);
+        if ((dataLessSpan = spans[hash]) == null) {
             dataLessSpan = new Span();
-            tmpMap.put(fullMinute, dataLessSpan);
+            spans[hash] = dataLessSpan;
         }
         dataLessSpan.sucTime.addAndGet("true".equals(isSuccess) ? 1 : 0);
         dataLessSpan.totalTime.addAndGet(1);
@@ -166,6 +169,10 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         result = 31 * result + a.hashCode();
         result = 31 * result + b.hashCode();
         return result;
+    }
+
+    public int minuteHash(long timezone) {
+        return (int) ((timezone - startTime) / 60000L);
     }
 
     @Override
@@ -200,7 +207,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
     @Override
     public String checkResponder(String responder, String start, String end) {
-        Map<Long, Span> timestampMap = checkTwoMap.get(responder);
+        Span[] timestampMap = checkTwoMap.get(responder);
         if (timestampMap == null) return "-1.00%";
         long startMil = parseDate(start);
         long endMil = parseDate(end);
@@ -208,10 +215,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         double sum = 0;
         Span span;
         for (long i = startMil; i <= endMil; i += 60000) {
-            span = timestampMap.get(i);
+            span = timestampMap[minuteHash(i)];
             if (span != null && span.getSucTime() != 0) {
-                // String str = formatDouble((double) span.getSucTime() / span.getTotalTime() * 100);
-                // sum += Double.parseDouble(str);
                 sum += ((double) span.getSucTime() / span.getTotalTime() * 100);
                 times++;
             }
