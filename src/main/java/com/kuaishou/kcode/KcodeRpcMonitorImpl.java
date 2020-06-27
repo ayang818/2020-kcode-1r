@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 // TODO 寻找可以优化的查询结构
-
+// TODO 由于二三阶段都是速度极为敏感的，所以需要尽量把耗时操作（计算），移动到一阶段。
 /**
  * @author kcode
  * Created on 2020-06-01
@@ -26,7 +26,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     static SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
     // 数据的所有特点 servicePair极少；timestamp极少，代表每分钟；ipPair也很少，集中在30左右；多的就是调用次数
     // 查询1数据结构
-    // Map<(caller, responder), Map<timestamp, Map<(callerIp, responderIp), Span>>>
+    // Map<hash(caller, responder), Map<timestamp, Map<(callerIp, responderIp), Span>>>
     Map<Integer, Map<Long, Map<String, Span>>> checkOneMap = new ConcurrentHashMap<>(128);
     // 查询2数据结构
     // Map<responder, Map<timestamp, Span>>
@@ -144,8 +144,9 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             dataLessSpan = new Span();
             spans[hash] = dataLessSpan;
         }
-        dataLessSpan.sucTime.addAndGet("true".equals(isSuccess) ? 1 : 0);
-        dataLessSpan.totalTime.addAndGet(1);
+        int tmpSucTime = dataLessSpan.sucTime.addAndGet("true".equals(isSuccess) ? 1 : 0);
+        int tmpTotalTime = dataLessSpan.totalTime.addAndGet(1);
+        dataLessSpan.sucRate = ((double) tmpSucTime / tmpTotalTime);
     }
 
     private void handleLine(String line) {
@@ -177,19 +178,22 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
     @Override
     public List<String> checkPair(String caller, String responder, String time) {
-        List<String> res = new ArrayList<>();
+        List<String> res = new ArrayList<>(20);
         Integer serviceKey = hash(caller, responder);
         Map<Long, Map<String, Span>> timestampMap;
+        // key: ipPair, value: Span
         Map<String, Span> ipPairMap;
         long timeMillis = parseDate(time);
         if ((timestampMap = checkOneMap.get(serviceKey)) != null) {
+            // 拿到对应服务在此时间戳下的所有记录
             if ((ipPairMap = timestampMap.get(timeMillis)) != null) {
-                Set<Map.Entry<String, Span>> entries = ipPairMap.entrySet();
-                entries.forEach((entry) -> {
+                Iterator<Map.Entry<String, Span>> iterator = ipPairMap.entrySet().iterator();
+                Map.Entry<String, Span> entry;
+                while (iterator.hasNext()) {
+                    entry = iterator.next();
                     String ipPair = entry.getKey();
                     Span span = entry.getValue();
-
-                    double sucRate = (double) span.getSucTime() / span.getTotalTime();
+                    double sucRate = span.getSucRate();
                     String strSucRate;
                     if (span.getSucTime() == 0) {
                         strSucRate = ".00%";
@@ -199,7 +203,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                     int p99 = span.getP99();
                     String re = new StringBuilder().append(ipPair).append(",").append(strSucRate).append(",").append(p99).toString();
                     res.add(re);
-                });
+                }
             }
         }
         return res;
@@ -217,7 +221,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         for (long i = startMil; i <= endMil; i += 60000) {
             span = timestampMap[minuteHash(i)];
             if (span != null && span.getSucTime() != 0) {
-                sum += ((double) span.getSucTime() / span.getTotalTime() * 100);
+                sum += (span.getSucRate() * 100);
                 times++;
             }
         }
@@ -227,8 +231,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             }
             return ".00%";
         }
-        String s = formatDouble(sum / times);
-        return s + "%";
+        return formatDouble(sum / times) + "%";
     }
 
     public String formatDouble(double num) {
@@ -249,7 +252,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
 
     /**
-     * TODO 当前只对于2020的日志有作用，晚点改
+     * TODO 当前只对于2020的日志有作用，晚点改?
      *
      * @param dateStr dateString format 2020-06-01 09:42
      * @return
@@ -266,6 +269,55 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         res += minutes * 60000;
         return res;
     }
+
+    static class Span {
+        AtomicInteger sucTime;
+        AtomicInteger totalTime;
+        double sucRate;
+        // 桶排,数量要是超过Short.MAX_VALUE就错了！！！
+        int[] bucket = new int[200];
+
+        public Span() {
+            sucTime = new AtomicInteger(0);
+            totalTime = new AtomicInteger(0);
+        }
+
+        public synchronized void update(short costTime, String isSuccess) {
+            // bucket不够大就扩容！
+            if (costTime >= bucket.length) {
+                int[] newBct = new int[costTime + 30];
+                System.arraycopy(bucket, 0, newBct, 0, bucket.length);
+                bucket = newBct;
+            }
+            int tmpTotalTime = totalTime.addAndGet(1);
+            int tmpSucTime = sucTime.addAndGet("true".equals(isSuccess) ? 1 : 0);
+            sucRate = ((double) tmpSucTime / tmpTotalTime);
+            bucket[costTime] += 1;
+        }
+
+        public int getP99() {
+            int pos = (int) (totalTime.get() * 0.01) + 1;
+            int len = bucket.length;
+            for (int i = len - 1; i >= 0; i--) {
+                pos -= bucket[i];
+                if (pos <= 0) return i;
+            }
+            return 0;
+        }
+
+        public int getTotalTime() {
+            return totalTime.get();
+        }
+
+        public int getSucTime() {
+            return sucTime.get();
+        }
+
+        public double getSucRate() {
+            return sucRate;
+        }
+    }
+
 
     @Deprecated
     private void processBlock(byte[] block) {
@@ -302,48 +354,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         }
         if (lastLF + 1 < block.length) {
             lineBuilder.append(new String(block, lastLF + 1, block.length - lastLF - 1));
-        }
-    }
-
-    static class Span {
-        AtomicInteger sucTime;
-        AtomicInteger totalTime;
-        // 桶排,数量要是超过Short.MAX_VALUE就错了！！！
-        int[] bucket = new int[200];
-
-        public Span() {
-            sucTime = new AtomicInteger(0);
-            totalTime = new AtomicInteger(0);
-        }
-
-        public synchronized void update(short costTime, String isSuccess) {
-            // bucket不够大就扩容！
-            if (costTime >= bucket.length) {
-                int[] newBct = new int[costTime + 30];
-                System.arraycopy(bucket, 0, newBct, 0, bucket.length);
-                bucket = newBct;
-            }
-            totalTime.addAndGet(1);
-            sucTime.addAndGet("true".equals(isSuccess) ? 1 : 0);
-            bucket[costTime] += 1;
-        }
-
-        public int getP99() {
-            int pos = (int) (totalTime.get() * 0.01) + 1;
-            int len = bucket.length;
-            for (int i = len - 1; i >= 0; i--) {
-                pos -= bucket[i];
-                if (pos <= 0) return i;
-            }
-            return 0;
-        }
-
-        public int getTotalTime() {
-            return totalTime.get();
-        }
-
-        public int getSucTime() {
-            return sucTime.get();
         }
     }
 }
