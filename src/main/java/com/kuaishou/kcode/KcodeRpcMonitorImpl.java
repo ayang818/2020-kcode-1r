@@ -66,22 +66,25 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     @Override
     public void prepare(String path) {
         try {
-            BufferedReader bufferedReader = new BufferedReader(new FileReader(path));
+            // 64KB的缓冲区
+            BufferedReader bufferedReader = new BufferedReader(new FileReader(path), 64 * 1024);
             String line;
-            int threshold = 50000;
+            int threshold = 25000;
             List<String> list = new ArrayList<>(threshold);
             while ((line = bufferedReader.readLine()) != null) {
                 list.add(line);
                 if (list.size() >= threshold) {
                     final List<String> tmp = list;
                     threadPool.execute(() -> handleLines(tmp));
-                    list = new ArrayList<>(50000);
+                    list = new ArrayList<>(threshold);
                 }
             }
             if (list.size() > 0) {
                 final List<String> tmp = list;
                 threadPool.execute(() -> handleLines(tmp));
             }
+            while (threadPool.getQueue().size() != 0) {}
+
             // RandomAccessFile memoryMappedFile = new RandomAccessFile(path, "r");
             // FileChannel channel = memoryMappedFile.getChannel();
             // // try to use 16KB buffer
