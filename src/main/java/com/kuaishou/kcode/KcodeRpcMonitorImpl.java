@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // 行数
-    private static final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(8, 8, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+    private static final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(6, 6, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
     StringBuilder lineBuilder = new StringBuilder();
     static SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
     // 数据的所有特点 servicePair少；timestamp极少，代表每分钟；ipPair也很少，集中在30左右；多的就是调用次数
@@ -60,8 +60,9 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
     @Override
     public void prepare(String path) {
+        long start = System.currentTimeMillis();
         try {
-            // 64KB，打满缓冲区
+            // 64KB，打满吞吐量
             BufferedReader bufferedReader = new BufferedReader(new FileReader(path), 64 * 1024);
             String line;
             // 此数值越小，任务越多
@@ -80,7 +81,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 threadPool.execute(() -> handleLines(tmp));
             }
             while (threadPool.getQueue().size() != 0) {}
-
             // RandomAccessFile memoryMappedFile = new RandomAccessFile(path, "r");
             // FileChannel channel = memoryMappedFile.getChannel();
             // // try to use 16KB buffer
@@ -98,6 +98,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        throw new RuntimeException(String.format("%d", System.currentTimeMillis() - start));
     }
 
     private void handleLine(String[] dataArray) {
