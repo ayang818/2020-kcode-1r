@@ -22,7 +22,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // 数据的所有特点 servicePair少；timestamp极少，代表每分钟；ipPair也很少，集中在30左右；多的就是调用次数
     // 查询1数据结构
     // Map<(caller, responder), Map<timestamp, Map<(callerIp, responderIp), Object(heap[costTime...costTime], sucTime, totalTime)>>>
-    Map<String, Map<Long, Map<String, Span>>> checkOneMap = new ConcurrentHashMap<>(128);
+    Map<Integer, Map<Long, Map<String, Span>>> checkOneMap = new ConcurrentHashMap<>(128);
     // 查询2数据结构
     // Map<responder, Map<timestamp, Span>>
     Map<String, Map<Long, Span>> checkTwoMap = new ConcurrentHashMap<>(64);
@@ -53,17 +53,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     public KcodeRpcMonitorImpl() {
     }
 
-    // public static void main(String[] args) {
-    //     try {
-    //         long time = dateFormat.parse("2020-06-01 09:42").getTime();
-    //         long l = parseDate("2020-06-01 09:42");
-    //         System.out.println(time);
-    //         System.out.println(l);
-    //         System.out.println(time == l);
-    //     } catch (ParseException e) {
-    //         e.printStackTrace();
-    //     }
-    // }
     @Override
     public void prepare(String path) {
         try {
@@ -136,8 +125,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         Map<Long, Map<String, Span>> timestampMap;
         Map<String, Span> ipPairMap;
         Span span;
-        String serviceKey = callerService + responderService;
-        String ipPairKey = callerIp + "," + responderIp;
+        Integer serviceKey = hash(callerService, responderService);
+        String ipPairKey = new StringBuilder().append(callerIp).append(",").append(responderIp).toString();
         // 实测computeIfAbsent和putIfAbsent都会比较慢，所以使用原始做法
         if ((timestampMap = checkOneMap.get(serviceKey)) == null) {
             timestampMap = new ConcurrentHashMap<>();
@@ -177,10 +166,17 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         return (timestamp / 60000) * 60000;
     }
 
+    private Integer hash(String a, String b) {
+        int result = 1;
+        result = 31 * result + a.hashCode();
+        result = 31 * result + b.hashCode();
+        return result;
+    }
+
     @Override
     public List<String> checkPair(String caller, String responder, String time) {
         List<String> res = new ArrayList<>();
-        String serviceKey = caller + responder;
+        Integer serviceKey = hash(caller , responder);
         Map<Long, Map<String, Span>> timestampMap;
         Map<String, Span> ipPairMap;
         long timeMillis = parseDate(time);
@@ -199,7 +195,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                         strSucRate = formatDouble(sucRate * 100) + "%";
                     }
                     int p99 = span.getP99();
-                    res.add(ipPair + "," + strSucRate + "," + p99);
+                    String re = new StringBuilder().append(ipPair).append(",").append(strSucRate).append(",").append(p99).toString();
+                    res.add(re);
                 });
             }
         }
