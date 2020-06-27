@@ -56,6 +56,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         }
     }
 
+
     // 不要修改访问级别
     public KcodeRpcMonitorImpl() {
     }
