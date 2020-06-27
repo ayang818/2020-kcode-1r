@@ -1,5 +1,9 @@
 package com.kuaishou.kcode;
 
+import sun.nio.ch.ThreadPool;
+
+import java.io.BufferedReader;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
@@ -8,6 +12,10 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 // TODO 减少hash次数
 
@@ -17,6 +25,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * 实际提交时请维持包名和类名不变
  */
 public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
+    // 行数
+    private static final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(6, 6, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
     StringBuilder lineBuilder = new StringBuilder();
     static SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
     // 数据的所有特点 servicePair少；timestamp极少，代表每分钟；ipPair也很少，集中在30左右；多的就是调用次数
@@ -56,59 +66,38 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     @Override
     public void prepare(String path) {
         try {
-            RandomAccessFile memoryMappedFile = new RandomAccessFile(path, "r");
-            FileChannel channel = memoryMappedFile.getChannel();
-            // try to use 16KB buffer
-            ByteBuffer byteBuffer = ByteBuffer.allocateDirect(1024 * 64);
-            int size = 0;
-            while (channel.read(byteBuffer) != -1) {
-                byteBuffer.flip();
-                int remain = byteBuffer.remaining();
-                byte[] bts = new byte[remain];
-                byteBuffer.get(bts, 0, remain);
-                byteBuffer.clear();
-                processBlock(bts);
-                size += 64;
+            BufferedReader bufferedReader = new BufferedReader(new FileReader(path));
+            String line;
+            int threshold = 50000;
+            List<String> list = new ArrayList<>(threshold);
+            while ((line = bufferedReader.readLine()) != null) {
+                list.add(line);
+                if (list.size() >= threshold) {
+                    final List<String> tmp = list;
+                    threadPool.execute(() -> handleLines(tmp));
+                    list = new ArrayList<>(50000);
+                }
             }
+            if (list.size() > 0) {
+                final List<String> tmp = list;
+                threadPool.execute(() -> handleLines(tmp));
+            }
+            // RandomAccessFile memoryMappedFile = new RandomAccessFile(path, "r");
+            // FileChannel channel = memoryMappedFile.getChannel();
+            // // try to use 16KB buffer
+            // ByteBuffer byteBuffer = ByteBuffer.allocateDirect(1024 * 64);
+            // int size = 0;
+            // while (channel.read(byteBuffer) != -1) {
+            //     byteBuffer.flip();
+            //     int remain = byteBuffer.remaining();
+            //     byte[] bts = new byte[remain];
+            //     byteBuffer.get(bts, 0, remain);
+            //     byteBuffer.clear();
+            //     processBlock(bts);
+            //     size += 64;
+            // }
         } catch (IOException e) {
             e.printStackTrace();
-        }
-    }
-
-    private void processBlock(byte[] block) {
-        int lastLF = -1;
-        int splitterTime = 0;
-        int prePos = -1;
-        boolean firstLine = true;
-        String line;
-        for (int i = 0; i < block.length; i++) {
-            byte bt = block[i];
-            // 逗号
-            if (bt == 44) {
-                dataArray[splitterTime] = new String(block, prePos + 1, i - prePos - 1);
-                prePos = i;
-                splitterTime += 1;
-            }
-            // 换行符
-            if (bt == 10) {
-                // 处理完整行
-                if (!firstLine) {
-                    dataArray[splitterTime] = new String(block, prePos + 1, i - prePos - 1);
-                    handleLine(dataArray);
-                } else {
-                    lineBuilder.append(new String(block, 0, i));
-                    line = lineBuilder.toString();
-                    handleLine(line);
-                    lineBuilder.delete(0, lineBuilder.length());
-                    firstLine = false;
-                }
-                lastLF = i;
-                splitterTime = 0;
-                prePos = i;
-            }
-        }
-        if (lastLF + 1 < block.length) {
-            lineBuilder.append(new String(block, lastLF + 1, block.length - lastLF - 1));
         }
     }
 
@@ -153,13 +142,20 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             dataLessSpan = new Span();
             tmpMap.put(fullMinute, dataLessSpan);
         }
-        dataLessSpan.sucTime += ("true".equals(isSuccess) ? 1 : 0);
-        dataLessSpan.totalTime += 1;
+        dataLessSpan.sucTime.addAndGet("true".equals(isSuccess) ? 1 : 0);
+        dataLessSpan.totalTime.addAndGet(1);
     }
 
     private void handleLine(String line) {
         String[] dataArray = line.split(",");
         handleLine(dataArray);
+    }
+
+    private void handleLines(List<String> tmp) {
+        int len = tmp.size();
+        for (int i = 0; i < len; i++) {
+            handleLine(tmp.get(i));
+        }
     }
 
     private long computeSecond(long timestamp) {
@@ -187,9 +183,9 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                     String ipPair = entry.getKey();
                     Span span = entry.getValue();
 
-                    double sucRate = (double) span.sucTime / span.totalTime;
+                    double sucRate = (double) span.getSucTime() / span.getTotalTime();
                     String strSucRate;
-                    if (span.sucTime == 0) {
+                    if (span.getSucTime() == 0) {
                         strSucRate = ".00%";
                     } else {
                         strSucRate = formatDouble(sucRate * 100) + "%";
@@ -214,8 +210,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         Span span;
         for (long i = startMil; i <= endMil; i += 60000) {
             span = timestampMap.get(i);
-            if (span != null && span.totalTime != 0) {
-                String str = formatDouble((double) span.sucTime / span.totalTime * 100);
+            if (span != null && span.getSucTime() != 0) {
+                String str = formatDouble((double) span.getSucTime() / span.getTotalTime() * 100);
                 sum += Double.parseDouble(str);
                 times++;
             }
@@ -265,37 +261,83 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         return res;
     }
 
+    @Deprecated
+    private void processBlock(byte[] block) {
+        int lastLF = -1;
+        int splitterTime = 0;
+        int prePos = -1;
+        boolean firstLine = true;
+        String line;
+        for (int i = 0; i < block.length; i++) {
+            byte bt = block[i];
+            // 逗号
+            if (bt == 44) {
+                dataArray[splitterTime] = new String(block, prePos + 1, i - prePos - 1);
+                prePos = i;
+                splitterTime += 1;
+            }
+            // 换行符
+            if (bt == 10) {
+                // 处理完整行
+                if (!firstLine) {
+                    dataArray[splitterTime] = new String(block, prePos + 1, i - prePos - 1);
+                    handleLine(dataArray);
+                } else {
+                    lineBuilder.append(new String(block, 0, i));
+                    line = lineBuilder.toString();
+                    handleLine(line);
+                    lineBuilder.delete(0, lineBuilder.length());
+                    firstLine = false;
+                }
+                lastLF = i;
+                splitterTime = 0;
+                prePos = i;
+            }
+        }
+        if (lastLF + 1 < block.length) {
+            lineBuilder.append(new String(block, lastLF + 1, block.length - lastLF - 1));
+        }
+    }
+
     static class Span {
-        int sucTime;
-        int totalTime;
+        AtomicInteger sucTime;
+        AtomicInteger totalTime;
         // 桶排,数量要是超过Short.MAX_VALUE就错了！！！
         int[] bucket = new int[200];
 
         public Span() {
-            sucTime = 0;
-            totalTime = 0;
+            sucTime = new AtomicInteger(0);
+            totalTime = new AtomicInteger(0);
         }
 
-        public void update(short costTime, String isSuccess) {
+        public synchronized void update(short costTime, String isSuccess) {
             // bucket不够大就扩容！
             if (costTime >= bucket.length) {
                 int[] newBct = new int[costTime + 30];
                 System.arraycopy(bucket, 0, newBct, 0, bucket.length);
                 bucket = newBct;
             }
-            totalTime += 1;
-            sucTime += ("true".equals(isSuccess) ? 1 : 0);
+            totalTime.addAndGet(1);
+            sucTime.addAndGet("true".equals(isSuccess) ? 1 : 0);
             bucket[costTime] += 1;
         }
 
         public int getP99() {
-            int pos = (int) (totalTime * 0.01) + 1;
+            int pos = (int) (totalTime.get() * 0.01) + 1;
             int len = bucket.length;
             for (int i = len - 1; i >= 0; i--) {
                 pos -= bucket[i];
                 if (pos <= 0) return i;
             }
             return 0;
+        }
+
+        public int getTotalTime() {
+            return totalTime.get();
+        }
+
+        public int getSucTime() {
+            return sucTime.get();
         }
     }
 }
