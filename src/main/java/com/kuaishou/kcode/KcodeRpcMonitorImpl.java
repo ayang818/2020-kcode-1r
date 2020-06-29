@@ -224,12 +224,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
     @Override
     public String checkResponder(String responder, String start, String end) {
-
-        try {
-            Thread.sleep(1);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
         Span[] timestampMap = checkTwoMap.get(responder);
         if (timestampMap == null) return "-1.00%";
         long startMil = parseDate(start);
