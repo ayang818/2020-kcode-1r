@@ -225,7 +225,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     @Override
     public String checkResponder(String responder, String start, String end) {
         try {
-            Thread.sleep(10);
+            Thread.sleep(1);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
