@@ -12,8 +12,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-// TODO 寻找可以优化的查询结构
-// TODO 由于二三阶段都是速度极为敏感的，所以需要尽量把耗时操作（计算），移动到一阶段。
+// TODO 发现数据特点，调用时间戳严格递增
 
 /**
  * @author kcode
@@ -40,6 +39,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     private static final long[] runMonthMillisCount = new long[13];
     private static final long[] runYearMonthDayCount = new long[]{0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
     private static final long[] normalYearMonthDayCount = new long[]{0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    String pre= null;
 
     static {
         Date startDate = null;
