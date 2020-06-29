@@ -34,8 +34,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // version2: Map<responder, Span[]> pos = [(timestamp - startTime) / 60000] Span[].length <> 45000
     Map<String, Span[]> checkTwoMap = new ConcurrentHashMap<>(64);
     private static final int spanCapacity = 500000;
-    double eps = 1e-4;
-    private static final String[] dataArray = new String[7];
     private static long startTime = 0;
     private static final long[] runMonthMillisCount = new long[13];
     private static final long[] runYearMonthDayCount = new long[]{0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
@@ -82,7 +80,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 final List<String> tmp = list;
                 threadPool.execute(() -> handleLines(tmp));
             }
-            while (threadPool.getQueue().size() != 0) {}
+            while (threadPool.getQueue().size() != 0) {
+            }
             // 单线程开始收集答案
             // 遍历所有主被服务对
             checkOneMap.forEach((key, timestampMap) -> {
@@ -91,9 +90,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                     String[] split = key.split(",");
                     Integer resKey = Objects.hash(split[0], split[1], k);
                     List<String> resList = new ArrayList<>(20);
-                    ipPairMap.forEach((ipPair, span) -> {
-                        resList.add(span.getRes());
-                    });
+                    ipPairMap.forEach((ipPair, span) -> resList.add(span.getRes()));
                     checkOneResMap.put(resKey, resList);
                 });
             });
@@ -152,13 +149,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         return (timestamp / 60000) * 60000;
     }
 
-    private Integer hash(String a, String b) {
-        int result = 1;
-        result = 31 * result + a.hashCode();
-        result = 31 * result + b.hashCode();
-        return result;
-    }
-
     public int minuteHash(long timezone) {
         return (int) ((timezone - startTime) / 60000L);
     }
@@ -185,7 +175,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         Span span;
         for (long i = startMil; i <= endMil; i += 60000) {
             span = timestampMap[minuteHash(i)];
-            if (span != null && span.getSucTime() != 0) {
+            if (span != null && span.sucRate != 0) {
                 sum += (span.getSucRate() * 100);
                 times++;
             }
@@ -240,7 +230,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         double sucRate;
 
         // 桶排
-        int[] bucket;
+        AtomicInteger[] bucket;
         String ipPair;
 
         public Span() {
@@ -252,26 +242,29 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             this.ipPair = ipPair;
             sucTime = new AtomicInteger(0);
             totalTime = new AtomicInteger(0);
-            bucket = new int[200];
+            bucket = new AtomicInteger[400];
+            for (int i = 0; i < 400; i++) {
+                bucket[i] = new AtomicInteger(0);
+            }
         }
 
-        public synchronized void update(short costTime, String isSuccess) {
-            // bucket不够大就扩容！
-            if (costTime >= bucket.length) {
-                int[] newBct = new int[costTime + 30];
-                System.arraycopy(bucket, 0, newBct, 0, bucket.length);
-                bucket = newBct;
-            }
+
+        /**
+         * thread safe
+         * @param costTime
+         * @param isSuccess
+         */
+        public void update(short costTime, String isSuccess) {
             totalTime.addAndGet(1);
             sucTime.addAndGet("true".equals(isSuccess) ? 1 : 0);
-            bucket[costTime] += 1;
+            bucket[costTime].addAndGet(1);
         }
 
         public int getP99() {
             int pos = (int) (totalTime.get() * 0.01) + 1;
             int len = bucket.length;
             for (int i = len - 1; i >= 0; i--) {
-                pos -= bucket[i];
+                pos -= bucket[i].get();
                 if (pos <= 0) return i;
             }
             return 0;
