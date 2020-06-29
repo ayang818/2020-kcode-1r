@@ -28,7 +28,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // 数据的所有特点 servicePair极少；timestamp极少，代表每分钟；ipPair也很少，集中在30左右；多的就是调用次数
     // 查询1数据结构
     // Map<hash(caller, responder), Map<timestamp, Map<(callerIp, responderIp), Span>>>
-    Map<Integer, Map<Long, Map<String, Span>>> checkOneMap = new ConcurrentHashMap<>(128);
+    Map<Integer, Map<String, Span>[]> checkOneMap = new ConcurrentHashMap<>(128);
     // 查询2数据结构
     // Map<responder, Map<timestamp, Span>>
     // version2: Map<responder, Span[]> pos = [(timestamp - startTime) / 60000] Span[].length <> 45000
@@ -82,8 +82,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 final List<String> tmp = list;
                 threadPool.execute(() -> handleLines(tmp));
             }
-            while (threadPool.getQueue().size() != 0) {
-            }
+            while (threadPool.getQueue().size() != 0) {}
             // RandomAccessFile memoryMappedFile = new RandomAccessFile(path, "r");
             // FileChannel channel = memoryMappedFile.getChannel();
             // // try to use 16KB buffer
@@ -113,19 +112,20 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         // 向上取整
         long fullMinute = computeSecond(Long.parseLong(dataArray[6]));
         //Map<(caller, responder), Map<timestamp, Map<(callerIp, responderIp), Object(list[costTime...costTime], sucTime, totalTime)>>>
-        Map<Long, Map<String, Span>> timestampMap;
+        Map<String, Span>[] timestampMap;
         Map<String, Span> ipPairMap;
         Span span;
         Integer serviceKey = hash(callerService, responderService);
         String ipPairKey = new StringBuilder().append(callerIp).append(",").append(responderIp).toString();
+        int hash = minuteHash(fullMinute);
         // 实测computeIfAbsent和putIfAbsent都会比较慢，所以使用原始做法
         if ((timestampMap = checkOneMap.get(serviceKey)) == null) {
-            timestampMap = new ConcurrentHashMap<>();
+            timestampMap = new ConcurrentHashMap[spanCapacity];
             checkOneMap.put(serviceKey, timestampMap);
         }
-        if ((ipPairMap = timestampMap.get(fullMinute)) == null) {
+        if ((ipPairMap = timestampMap[hash]) == null) {
             ipPairMap = new ConcurrentHashMap<>();
-            timestampMap.put(fullMinute, ipPairMap);
+            timestampMap[hash] = ipPairMap;
         }
         if ((span = ipPairMap.get(ipPairKey)) == null) {
             span = new Span(ipPairKey);
@@ -140,7 +140,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             spans = new Span[spanCapacity];
             checkTwoMap.put(responderService, spans);
         }
-        int hash = minuteHash(fullMinute);
         if ((dataLessSpan = spans[hash]) == null) {
             dataLessSpan = new Span();
             spans[hash] = dataLessSpan;
@@ -181,13 +180,13 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     public List<String> checkPair(String caller, String responder, String time) {
         List<String> res = new ArrayList<>(20);
         Integer serviceKey = hash(caller, responder);
-        Map<Long, Map<String, Span>> timestampMap;
+        Map<String, Span>[] timestampMap;
         // key: ipPair, value: Span
         Map<String, Span> ipPairMap;
         long timeMillis = parseDate(time);
         if ((timestampMap = checkOneMap.get(serviceKey)) != null) {
             // 拿到对应服务在此时间戳下的所有记录
-            if ((ipPairMap = timestampMap.get(timeMillis)) != null) {
+            if ((ipPairMap = timestampMap[minuteHash(timeMillis)]) != null) {
                 Iterator<Map.Entry<String, Span>> iterator = ipPairMap.entrySet().iterator();
                 Map.Entry<String, Span> entry;
                 while (iterator.hasNext()) {
