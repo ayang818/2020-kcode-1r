@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 // TODO 寻找可以优化的查询结构
 // TODO 由于二三阶段都是速度极为敏感的，所以需要尽量把耗时操作（计算），移动到一阶段。
+
 /**
  * @author kcode
  * Created on 2020-06-01
@@ -68,7 +69,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             BufferedReader bufferedReader = new BufferedReader(new FileReader(path), 64 * 1024);
             String line;
             // 此数值越小，任务越多，执行时间越短，但是在未作同步的情况下越容易发生并发错误
-            int threshold = 10000;
+            int threshold = 5000;
             List<String> list = new ArrayList<>(threshold);
             while ((line = bufferedReader.readLine()) != null) {
                 list.add(line);
@@ -192,8 +193,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 Map.Entry<String, Span> entry;
                 while (iterator.hasNext()) {
                     entry = iterator.next();
-                    Span span = entry.getValue();
-                    res.add(span.getRes());
+                    res.add(entry.getValue().getRes());
                 }
             }
         }
@@ -299,12 +299,12 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             double sucRate = getSucRate();
             String strSucRate;
             if (getSucTime() == 0) {
-                strSucRate = ".00%";
+                strSucRate = ".00";
             } else {
-                strSucRate = formatDouble(sucRate * 100) + "%";
+                strSucRate = formatDouble(sucRate * 100);
             }
             int p99 = getP99();
-            this.res = new StringBuilder().append(ipPair).append(",").append(strSucRate).append(",").append(p99).toString();
+            this.res = new StringBuilder().append(ipPair).append(",").append(strSucRate).append("%,").append(p99).toString();
         }
 
         public int getP99() {
