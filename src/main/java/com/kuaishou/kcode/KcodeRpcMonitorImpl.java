@@ -28,7 +28,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // 查询1数据结构
     // Map<(caller+responder), Map<timestamp, Map<(callerIp, responderIp), Span>>>
     Map<String, Map<Long, Map<String, Span>>> checkOneMap = new ConcurrentHashMap<>(128);
-    Map<String, List<String>> checkOneResMap = new ConcurrentHashMap<>(1000);
+    Map<Integer, List<String>> checkOneResMap = new ConcurrentHashMap<>(1000);
     // 查询2数据结构
     // Map<responder, Map<timestamp, Span>>
     // version2: Map<responder, Span[]> pos = [(timestamp - startTime) / 60000] Span[].length <> 45000
@@ -40,7 +40,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     private static final long[] runMonthMillisCount = new long[13];
     private static final long[] runYearMonthDayCount = new long[]{0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
     private static final long[] normalYearMonthDayCount = new long[]{0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-    String pre= null;
 
     static {
         Date startDate = null;
@@ -89,7 +88,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             checkOneMap.forEach((key, timestampMap) -> {
                 // 遍历所有时间戳
                 timestampMap.forEach((k, ipPairMap) -> {
-                    String resKey = key+k;
+                    String[] split = key.split(",");
+                    Integer resKey = Objects.hash(split[0], split[1], k);
                     List<String> resList = new ArrayList<>(20);
                     ipPairMap.forEach((ipPair, span) -> {
                         resList.add(span.getRes());
@@ -110,15 +110,15 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         String isSuccess = dataArray[4];
         short costTime = Short.parseShort(dataArray[5]);
         // 向上取整
-        long fullMinute = computeSecond(Long.parseLong(dataArray[6]));
+        long fullMinuteSecond = computeSecond(Long.parseLong(dataArray[6]));
         Map<Long, Map<String, Span>> timestampMap;
         Map<String, Span> ipPairMap;
         Span span;
-        String serviceKey = callerService + responderService;
+        String serviceKey = callerService + "," + responderService;
         String ipPairKey = new StringBuilder().append(callerIp).append(",").append(responderIp).toString();
         // 实测computeIfAbsent和putIfAbsent都会比较慢，所以使用原始做法
         timestampMap = checkOneMap.computeIfAbsent(serviceKey, (v) -> new ConcurrentHashMap<>());
-        ipPairMap = timestampMap.computeIfAbsent(fullMinute, (v) -> new ConcurrentHashMap<>());
+        ipPairMap = timestampMap.computeIfAbsent(fullMinuteSecond, (v) -> new ConcurrentHashMap<>());
         span = ipPairMap.computeIfAbsent(ipPairKey, (v) -> new Span(ipPairKey));
         span.update(costTime, isSuccess);
 
@@ -126,7 +126,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         Span[] spans;
         Span dataLessSpan;
         spans = checkTwoMap.computeIfAbsent(responderService, (v) -> new Span[spanCapacity]);
-        int hash = minuteHash(fullMinute);
+        int hash = minuteHash(fullMinuteSecond);
         if ((dataLessSpan = spans[hash]) == null) {
             dataLessSpan = new Span();
             spans[hash] = dataLessSpan;
@@ -165,7 +165,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
     @Override
     public List<String> checkPair(String caller, String responder, String time) {
-        String resKey = caller + responder + parseDate(time);
+        Integer resKey = Objects.hash(caller, responder, parseDate(time));
+        // String resKey = caller + responder + parseDate(time);
         List<String> res;
         if ((res = checkOneResMap.get(resKey)) == null) {
             res = new ArrayList<>();
@@ -213,7 +214,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         }
         return res;
     }
-
 
     /**
      * TODO 当前只对于2020的日志有作用，晚点改?
@@ -300,45 +300,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             }
             int p99 = getP99();
             return ipPair + "," + strSucRate + "%," + p99;
-        }
-    }
-
-
-    @Deprecated
-    private void processBlock(byte[] block) {
-        int lastLF = -1;
-        int splitterTime = 0;
-        int prePos = -1;
-        boolean firstLine = true;
-        String line;
-        for (int i = 0; i < block.length; i++) {
-            byte bt = block[i];
-            // 逗号
-            if (bt == 44) {
-                dataArray[splitterTime] = new String(block, prePos + 1, i - prePos - 1);
-                prePos = i;
-                splitterTime += 1;
-            }
-            // 换行符
-            if (bt == 10) {
-                // 处理完整行
-                if (!firstLine) {
-                    dataArray[splitterTime] = new String(block, prePos + 1, i - prePos - 1);
-                    handleLine(dataArray);
-                } else {
-                    lineBuilder.append(new String(block, 0, i));
-                    line = lineBuilder.toString();
-                    handleLine(line);
-                    lineBuilder.delete(0, lineBuilder.length());
-                    firstLine = false;
-                }
-                lastLF = i;
-                splitterTime = 0;
-                prePos = i;
-            }
-        }
-        if (lastLF + 1 < block.length) {
-            lineBuilder.append(new String(block, lastLF + 1, block.length - lastLF - 1));
         }
     }
 }
