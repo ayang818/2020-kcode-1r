@@ -281,7 +281,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         return res;
     }
 
-    static int max = 0;
 
     static class Span {
         AtomicInteger sucTime;
@@ -316,7 +315,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             sucTime.addAndGet("true".equals(isSuccess) ? 1 : 0);
             synchronized (this) {
                 bucket[costTime] += 1;
-                max = Math.max(costTime, max);
             }
         }
 
@@ -328,10 +326,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 if (pos <= 0) return i;
             }
             return 0;
-        }
-
-        public int getTotalTime() {
-            return totalTime.get();
         }
 
         public int getSucTime() {
