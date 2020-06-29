@@ -64,6 +64,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
     @Override
     public void prepare(String path) {
+        long start = System.currentTimeMillis();
         try {
             // 64KB，打满吞吐量
             BufferedReader bufferedReader = new BufferedReader(new FileReader(path), 64 * 1024);
@@ -85,6 +86,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             }
             while (threadPool.getQueue().size() != 0) {
             }
+            throw new RuntimeException(String.format("cost %d", System.currentTimeMillis() - start));
             // RandomAccessFile memoryMappedFile = new RandomAccessFile(path, "r");
             // FileChannel channel = memoryMappedFile.getChannel();
             // // try to use 16KB buffer
