@@ -23,6 +23,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // 行数
     private static final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(8, 8, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
     StringBuilder lineBuilder = new StringBuilder();
+    static String[] dataArray = new String[7];
     static SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
     // 数据的所有特点 servicePair极少；timestamp极少，代表每分钟；ipPair也很少，集中在30左右；多的就是调用次数
     // 查询1数据结构
@@ -32,7 +33,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // 查询2数据结构
     // Map<responder, Map<timestamp, Span>>
     // version2: Map<responder, Span[]> pos = [(timestamp - startTime) / 60000] Span[].length <> 45000
-    Map<String, Span[]> checkTwoMap = new ConcurrentHashMap<>(64);
+    Map<String, Span[]> checkTwoMap = new ConcurrentHashMap<>(128);
     private static final int spanCapacity = 500000;
     private static long startTime = 0;
     private static final long[] runMonthMillisCount = new long[13];
@@ -65,23 +66,41 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             // 64KB，打满吞吐量
             BufferedReader bufferedReader = new BufferedReader(new FileReader(path), 64 * 1024);
             String line;
-            // 此数值越小，任务越多，执行时间越短，但是在未作同步的情况下越容易发生并发错误
-            int threshold = 5000;
-            List<String> list = new ArrayList<>(threshold);
+            // 此数值越小，任务越多，执行时间越短，尝试打满CPU
+            int threshold = 200;
+            String[] list = new String[threshold];
+            int index = 0;
             while ((line = bufferedReader.readLine()) != null) {
-                list.add(line);
-                if (list.size() >= threshold) {
-                    final List<String> tmp = list;
+                list[index] = line;
+                index++;
+                if (index >= threshold) {
+                    final String[] tmp = list;
                     threadPool.execute(() -> handleLines(tmp));
-                    list = new ArrayList<>(threshold);
+                    list = new String[threshold];
+                    index = 0;
                 }
             }
-            if (list.size() > 0) {
-                final List<String> tmp = list;
+            if (index > 0) {
+                final String[] tmp = list;
                 threadPool.execute(() -> handleLines(tmp));
             }
-            while (threadPool.getQueue().size() != 0) {
-            }
+            while (threadPool.getQueue().size() != 0) { }
+
+            // RandomAccessFile memoryMappedFile = new RandomAccessFile(path, "r");
+            // FileChannel channel = memoryMappedFile.getChannel();
+            // // try to use 16KB buffer
+            // ByteBuffer byteBuffer = ByteBuffer.allocateDirect(1024 * 64);
+            // int size = 0;
+            // while (channel.read(byteBuffer) != -1) {
+            //     byteBuffer.flip();
+            //     int remain = byteBuffer.remaining();
+            //     byte[] bts = new byte[remain];
+            //     byteBuffer.get(bts, 0, remain);
+            //     byteBuffer.clear();
+            //     processBlock(bts);
+            //     size += 64;
+            // }
+
             // 单线程开始收集答案
             // 遍历所有主被服务对
             checkOneMap.forEach((key, timestampMap) -> {
@@ -96,6 +115,43 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             });
         } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+
+    private void processBlock(byte[] block) {
+        int lastLF = -1;
+        int splitterTime = 0;
+        int prePos = -1;
+        boolean firstLine = true;
+        String line;
+        for (int i = 0; i < block.length; i++) {
+            byte bt = block[i];
+            // 逗号
+            if (bt == 44) {
+                dataArray[splitterTime] = new String(block, prePos + 1, i - prePos - 1);
+                prePos = i;
+                splitterTime += 1;
+            }
+            // 换行符
+            if (bt == 10) {
+                // 处理完整行
+                if (!firstLine) {
+                    dataArray[splitterTime] = new String(block, prePos + 1, i - prePos - 1);
+                    handleLine(dataArray);
+                } else {
+                    lineBuilder.append(new String(block, 0, i));
+                    line = lineBuilder.toString();
+                    handleLine(line);
+                    lineBuilder.delete(0, lineBuilder.length());
+                    firstLine = false;
+                }
+                lastLF = i;
+                splitterTime = 0;
+                prePos = i;
+            }
+        }
+        if (lastLF + 1 < block.length) {
+            lineBuilder.append(new String(block, lastLF + 1, block.length - lastLF - 1));
         }
     }
 
@@ -138,10 +194,12 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         handleLine(dataArray);
     }
 
-    private void handleLines(List<String> tmp) {
-        int len = tmp.size();
+    private void handleLines(String[] tmp) {
+        int len = tmp.length;
+        String line;
         for (int i = 0; i < len; i++) {
-            handleLine(tmp.get(i));
+            line = tmp[i];
+            if (line != null) handleLine(tmp[i]);
         }
     }
 
@@ -224,13 +282,15 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         return res;
     }
 
+    static int max = 0;
+
     static class Span {
         AtomicInteger sucTime;
         AtomicInteger totalTime;
         double sucRate;
 
         // 桶排
-        AtomicInteger[] bucket;
+        int[] bucket;
         String ipPair;
 
         public Span() {
@@ -242,29 +302,30 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             this.ipPair = ipPair;
             sucTime = new AtomicInteger(0);
             totalTime = new AtomicInteger(0);
-            bucket = new AtomicInteger[400];
-            for (int i = 0; i < 400; i++) {
-                bucket[i] = new AtomicInteger(0);
-            }
+            bucket = new int[320];
         }
 
 
         /**
          * thread safe
+         *
          * @param costTime
          * @param isSuccess
          */
         public void update(short costTime, String isSuccess) {
             totalTime.addAndGet(1);
             sucTime.addAndGet("true".equals(isSuccess) ? 1 : 0);
-            bucket[costTime].addAndGet(1);
+            synchronized (this) {
+                bucket[costTime] += 1;
+                max = Math.max(costTime, max);
+            }
         }
 
         public int getP99() {
             int pos = (int) (totalTime.get() * 0.01) + 1;
             int len = bucket.length;
             for (int i = len - 1; i >= 0; i--) {
-                pos -= bucket[i].get();
+                pos -= bucket[i];
                 if (pos <= 0) return i;
             }
             return 0;
