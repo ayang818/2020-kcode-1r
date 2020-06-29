@@ -85,7 +85,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 threadPool.execute(() -> handleLines(tmp));
             }
             while (threadPool.getQueue().size() != 0) { }
-
             // RandomAccessFile memoryMappedFile = new RandomAccessFile(path, "r");
             // FileChannel channel = memoryMappedFile.getChannel();
             // // try to use 16KB buffer
