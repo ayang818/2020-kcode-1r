@@ -26,8 +26,9 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     static SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
     // 数据的所有特点 servicePair极少；timestamp极少，代表每分钟；ipPair也很少，集中在30左右；多的就是调用次数
     // 查询1数据结构
-    // Map<hash(caller, responder), Map<timestamp, Map<(callerIp, responderIp), Span>>>
-    Map<Integer, Map<String, Span>[]> checkOneMap = new ConcurrentHashMap<>(128);
+    // Map<(caller+responder), Map<timestamp, Map<(callerIp, responderIp), Span>>>
+    Map<String, Map<Long, Map<String, Span>>> checkOneMap = new ConcurrentHashMap<>(128);
+    Map<String, List<String>> checkOneResMap = new ConcurrentHashMap<>(1000);
     // 查询2数据结构
     // Map<responder, Map<timestamp, Span>>
     // version2: Map<responder, Span[]> pos = [(timestamp - startTime) / 60000] Span[].length <> 45000
@@ -83,20 +84,19 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 threadPool.execute(() -> handleLines(tmp));
             }
             while (threadPool.getQueue().size() != 0) {}
-            // RandomAccessFile memoryMappedFile = new RandomAccessFile(path, "r");
-            // FileChannel channel = memoryMappedFile.getChannel();
-            // // try to use 16KB buffer
-            // ByteBuffer byteBuffer = ByteBuffer.allocateDirect(1024 * 64);
-            // int size = 0;
-            // while (channel.read(byteBuffer) != -1) {
-            //     byteBuffer.flip();
-            //     int remain = byteBuffer.remaining();
-            //     byte[] bts = new byte[remain];
-            //     byteBuffer.get(bts, 0, remain);
-            //     byteBuffer.clear();
-            //     processBlock(bts);
-            //     size += 64;
-            // }
+            // 单线程开始收集答案
+            // 遍历所有主被服务对
+            checkOneMap.forEach((key, timestampMap) -> {
+                // 遍历所有时间戳
+                timestampMap.forEach((k, ipPairMap) -> {
+                    String resKey = key+k;
+                    List<String> resList = new ArrayList<>(20);
+                    ipPairMap.forEach((ipPair, span) -> {
+                        resList.add(span.getRes());
+                    });
+                    checkOneResMap.put(resKey, resList);
+                });
+            });
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -111,35 +111,22 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         short costTime = Short.parseShort(dataArray[5]);
         // 向上取整
         long fullMinute = computeSecond(Long.parseLong(dataArray[6]));
-        //Map<(caller, responder), Map<timestamp, Map<(callerIp, responderIp), Object(list[costTime...costTime], sucTime, totalTime)>>>
-        Map<String, Span>[] timestampMap;
+        Map<Long, Map<String, Span>> timestampMap;
         Map<String, Span> ipPairMap;
         Span span;
-        Integer serviceKey = hash(callerService, responderService);
+        String serviceKey = callerService + responderService;
         String ipPairKey = new StringBuilder().append(callerIp).append(",").append(responderIp).toString();
-        int hash = minuteHash(fullMinute);
         // 实测computeIfAbsent和putIfAbsent都会比较慢，所以使用原始做法
-        if ((timestampMap = checkOneMap.get(serviceKey)) == null) {
-            timestampMap = new ConcurrentHashMap[spanCapacity];
-            checkOneMap.put(serviceKey, timestampMap);
-        }
-        if ((ipPairMap = timestampMap[hash]) == null) {
-            ipPairMap = new ConcurrentHashMap<>();
-            timestampMap[hash] = ipPairMap;
-        }
-        if ((span = ipPairMap.get(ipPairKey)) == null) {
-            span = new Span(ipPairKey);
-            ipPairMap.put(ipPairKey, span);
-        }
+        timestampMap = checkOneMap.computeIfAbsent(serviceKey, (v) -> new ConcurrentHashMap<>());
+        ipPairMap = timestampMap.computeIfAbsent(fullMinute, (v) -> new ConcurrentHashMap<>());
+        span = ipPairMap.computeIfAbsent(ipPairKey, (v) -> new Span(ipPairKey));
         span.update(costTime, isSuccess);
 
         // 记录第二种查询数据
         Span[] spans;
         Span dataLessSpan;
-        if ((spans = checkTwoMap.get(responderService)) == null) {
-            spans = new Span[spanCapacity];
-            checkTwoMap.put(responderService, spans);
-        }
+        spans = checkTwoMap.computeIfAbsent(responderService, (v) -> new Span[spanCapacity]);
+        int hash = minuteHash(fullMinute);
         if ((dataLessSpan = spans[hash]) == null) {
             dataLessSpan = new Span();
             spans[hash] = dataLessSpan;
@@ -178,22 +165,10 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
     @Override
     public List<String> checkPair(String caller, String responder, String time) {
-        List<String> res = new ArrayList<>(20);
-        Integer serviceKey = hash(caller, responder);
-        Map<String, Span>[] timestampMap;
-        // key: ipPair, value: Span
-        Map<String, Span> ipPairMap;
-        long timeMillis = parseDate(time);
-        if ((timestampMap = checkOneMap.get(serviceKey)) != null) {
-            // 拿到对应服务在此时间戳下的所有记录
-            if ((ipPairMap = timestampMap[minuteHash(timeMillis)]) != null) {
-                Iterator<Map.Entry<String, Span>> iterator = ipPairMap.entrySet().iterator();
-                Map.Entry<String, Span> entry;
-                while (iterator.hasNext()) {
-                    entry = iterator.next();
-                    res.add(entry.getValue().getRes());
-                }
-            }
+        String resKey = caller + responder + parseDate(time);
+        List<String> res;
+        if ((res = checkOneResMap.get(resKey)) == null) {
+            res = new ArrayList<>();
         }
         return res;
     }
@@ -264,10 +239,9 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         AtomicInteger totalTime;
         double sucRate;
 
-        // 桶排,数量要是超过Short.MAX_VALUE就错了！！！
+        // 桶排
         int[] bucket;
         String ipPair;
-        String res;
 
         public Span() {
             sucTime = new AtomicInteger(0);
@@ -288,21 +262,9 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 System.arraycopy(bucket, 0, newBct, 0, bucket.length);
                 bucket = newBct;
             }
-            int tmpTotalTime = totalTime.addAndGet(1);
-            int tmpSucTime = sucTime.addAndGet("true".equals(isSuccess) ? 1 : 0);
-            sucRate = ((double) tmpSucTime / tmpTotalTime);
+            totalTime.addAndGet(1);
+            sucTime.addAndGet("true".equals(isSuccess) ? 1 : 0);
             bucket[costTime] += 1;
-
-            // generate res
-            double sucRate = getSucRate();
-            String strSucRate;
-            if (getSucTime() == 0) {
-                strSucRate = ".00";
-            } else {
-                strSucRate = formatDouble(sucRate * 100);
-            }
-            int p99 = getP99();
-            this.res = ipPair + "," + strSucRate + "%," + p99;
         }
 
         public int getP99() {
@@ -324,11 +286,20 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         }
 
         public double getSucRate() {
-            return sucRate;
+            return (double) sucTime.get() / totalTime.get();
         }
 
         public String getRes() {
-            return this.res;
+            // generate res
+            double sucRate = getSucRate();
+            String strSucRate;
+            if (getSucTime() == 0) {
+                strSucRate = ".00";
+            } else {
+                strSucRate = formatDouble(sucRate * 100);
+            }
+            int p99 = getP99();
+            return ipPair + "," + strSucRate + "%," + p99;
         }
     }
 
