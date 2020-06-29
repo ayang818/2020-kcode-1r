@@ -67,7 +67,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             BufferedReader bufferedReader = new BufferedReader(new FileReader(path), 64 * 1024);
             String line;
             // 此数值越小，任务越多，执行时间越短，尝试打满CPU
-            int threshold = 200;
+            int threshold = 1000;
             String[] list = new String[threshold];
             int index = 0;
             while ((line = bufferedReader.readLine()) != null) {
