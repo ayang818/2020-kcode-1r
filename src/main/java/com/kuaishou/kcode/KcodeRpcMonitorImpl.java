@@ -57,14 +57,12 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         }
     }
 
-
     // 不要修改访问级别
     public KcodeRpcMonitorImpl() {
     }
 
     @Override
     public void prepare(String path) {
-        long start = System.currentTimeMillis();
         try {
             // 64KB，打满吞吐量
             BufferedReader bufferedReader = new BufferedReader(new FileReader(path), 64 * 1024);
@@ -86,7 +84,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             }
             while (threadPool.getQueue().size() != 0) {
             }
-            throw new RuntimeException(String.format("cost %d", System.currentTimeMillis() - start));
             // RandomAccessFile memoryMappedFile = new RandomAccessFile(path, "r");
             // FileChannel channel = memoryMappedFile.getChannel();
             // // try to use 16KB buffer
@@ -306,7 +303,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 strSucRate = formatDouble(sucRate * 100);
             }
             int p99 = getP99();
-            this.res = new StringBuilder().append(ipPair).append(",").append(strSucRate).append("%,").append(p99).toString();
+            this.res = ipPair + "," + strSucRate + "%," + p99;
         }
 
         public int getP99() {
