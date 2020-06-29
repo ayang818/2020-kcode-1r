@@ -67,7 +67,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             // 64KB，打满吞吐量
             BufferedReader bufferedReader = new BufferedReader(new FileReader(path), 64 * 1024);
             String line;
-            // 此数值越小，任务越多，执行时间越短
+            // 此数值越小，任务越多，执行时间越短，但是在未作同步的情况下越容易发生并发错误
             int threshold = 10000;
             List<String> list = new ArrayList<>(threshold);
             while ((line = bufferedReader.readLine()) != null) {
@@ -128,7 +128,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             timestampMap.put(fullMinute, ipPairMap);
         }
         if ((span = ipPairMap.get(ipPairKey)) == null) {
-            span = new Span();
+            span = new Span(ipPairKey);
             ipPairMap.put(ipPairKey, span);
         }
         span.update(costTime, isSuccess);
@@ -192,18 +192,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 Map.Entry<String, Span> entry;
                 while (iterator.hasNext()) {
                     entry = iterator.next();
-                    String ipPair = entry.getKey();
                     Span span = entry.getValue();
-                    double sucRate = span.getSucRate();
-                    String strSucRate;
-                    if (span.getSucTime() == 0) {
-                        strSucRate = ".00%";
-                    } else {
-                        strSucRate = formatDouble(sucRate * 100) + "%";
-                    }
-                    int p99 = span.getP99();
-                    String re = new StringBuilder().append(ipPair).append(",").append(strSucRate).append(",").append(p99).toString();
-                    res.add(re);
+                    res.add(span.getRes());
                 }
             }
         }
@@ -235,7 +225,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         return formatDouble(sum / times) + "%";
     }
 
-    public String formatDouble(double num) {
+    public static String formatDouble(double num) {
         String tmp = String.valueOf(num);
         int i = tmp.indexOf(".");
         String res;
@@ -275,12 +265,22 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         AtomicInteger sucTime;
         AtomicInteger totalTime;
         double sucRate;
+
         // 桶排,数量要是超过Short.MAX_VALUE就错了！！！
-        int[] bucket = new int[200];
+        int[] bucket;
+        String ipPair;
+        String res;
 
         public Span() {
             sucTime = new AtomicInteger(0);
             totalTime = new AtomicInteger(0);
+        }
+
+        public Span(String ipPair) {
+            this.ipPair = ipPair;
+            sucTime = new AtomicInteger(0);
+            totalTime = new AtomicInteger(0);
+            bucket = new int[200];
         }
 
         public synchronized void update(short costTime, String isSuccess) {
@@ -294,6 +294,17 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             int tmpSucTime = sucTime.addAndGet("true".equals(isSuccess) ? 1 : 0);
             sucRate = ((double) tmpSucTime / tmpTotalTime);
             bucket[costTime] += 1;
+
+            // generate res
+            double sucRate = getSucRate();
+            String strSucRate;
+            if (getSucTime() == 0) {
+                strSucRate = ".00%";
+            } else {
+                strSucRate = formatDouble(sucRate * 100) + "%";
+            }
+            int p99 = getP99();
+            this.res = new StringBuilder().append(ipPair).append(",").append(strSucRate).append(",").append(p99).toString();
         }
 
         public int getP99() {
@@ -316,6 +327,10 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
         public double getSucRate() {
             return sucRate;
+        }
+
+        public String getRes() {
+            return this.res;
         }
     }
 
