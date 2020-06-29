@@ -66,8 +66,8 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             // 64KB，打满吞吐量
             BufferedReader bufferedReader = new BufferedReader(new FileReader(path), 64 * 1024);
             String line;
-            // 此数值越小，任务越多，执行时间越短，尝试打满CPU
-            int threshold = 1000;
+            // 此数值越小，任务越多，执行时间越短，尝试打满CPU 1000也炸
+            int threshold = 4000;
             String[] list = new String[threshold];
             int index = 0;
             while ((line = bufferedReader.readLine()) != null) {
@@ -112,6 +112,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                     checkOneResMap.put(resKey, resList);
                 });
             });
+            checkOneMap = null;
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -198,7 +199,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         String line;
         for (int i = 0; i < len; i++) {
             line = tmp[i];
-            if (line != null) handleLine(tmp[i]);
+            if (line != null) handleLine(line);
         }
     }
 
