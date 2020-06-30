@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // 行数
-    private static final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(8, 8, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+    private static final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(6, 6, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
     StringBuilder lineBuilder = new StringBuilder();
     static String[] dataArray = new String[7];
     static SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
@@ -100,7 +100,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             //     processBlock(bts);
             //     size += 64;
             // }
-
             // 单线程开始收集答案
             // 遍历所有主被服务对
             checkOneMap.forEach((key, timestampMap) -> {
@@ -114,46 +113,9 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 });
             });
             checkOneMap = null;
-            throw new RuntimeException(String.format("prepare cost %d", System.currentTimeMillis() - startTime));
+            // throw new RuntimeException(String.format("prepare cost %d", System.currentTimeMillis() - startTime));
         } catch (IOException e) {
             e.printStackTrace();
-        }
-    }
-
-    private void processBlock(byte[] block) {
-        int lastLF = -1;
-        int splitterTime = 0;
-        int prePos = -1;
-        boolean firstLine = true;
-        String line;
-        for (int i = 0; i < block.length; i++) {
-            byte bt = block[i];
-            // 逗号
-            if (bt == 44) {
-                dataArray[splitterTime] = new String(block, prePos + 1, i - prePos - 1);
-                prePos = i;
-                splitterTime += 1;
-            }
-            // 换行符
-            if (bt == 10) {
-                // 处理完整行
-                if (!firstLine) {
-                    dataArray[splitterTime] = new String(block, prePos + 1, i - prePos - 1);
-                    handleLine(dataArray);
-                } else {
-                    lineBuilder.append(new String(block, 0, i));
-                    line = lineBuilder.toString();
-                    handleLine(line);
-                    lineBuilder.delete(0, lineBuilder.length());
-                    firstLine = false;
-                }
-                lastLF = i;
-                splitterTime = 0;
-                prePos = i;
-            }
-        }
-        if (lastLF + 1 < block.length) {
-            lineBuilder.append(new String(block, lastLF + 1, block.length - lastLF - 1));
         }
     }
 
@@ -316,9 +278,9 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         public void update(short costTime, String isSuccess) {
             totalTime.addAndGet(1);
             sucTime.addAndGet("true".equals(isSuccess) ? 1 : 0);
-            synchronized (this) {
+            // synchronized (this) {
                 bucket[costTime] += 1;
-            }
+            // }
         }
 
         public int getP99() {
@@ -350,6 +312,43 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             }
             int p99 = getP99();
             return ipPair + "," + strSucRate + "%," + p99;
+        }
+    }
+
+    private void processBlock(byte[] block) {
+        int lastLF = -1;
+        int splitterTime = 0;
+        int prePos = -1;
+        boolean firstLine = true;
+        String line;
+        for (int i = 0; i < block.length; i++) {
+            byte bt = block[i];
+            // 逗号
+            if (bt == 44) {
+                dataArray[splitterTime] = new String(block, prePos + 1, i - prePos - 1);
+                prePos = i;
+                splitterTime += 1;
+            }
+            // 换行符
+            if (bt == 10) {
+                // 处理完整行
+                if (!firstLine) {
+                    dataArray[splitterTime] = new String(block, prePos + 1, i - prePos - 1);
+                    handleLine(dataArray);
+                } else {
+                    lineBuilder.append(new String(block, 0, i));
+                    line = lineBuilder.toString();
+                    handleLine(line);
+                    lineBuilder.delete(0, lineBuilder.length());
+                    firstLine = false;
+                }
+                lastLF = i;
+                splitterTime = 0;
+                prePos = i;
+            }
+        }
+        if (lastLF + 1 < block.length) {
+            lineBuilder.append(new String(block, lastLF + 1, block.length - lastLF - 1));
         }
     }
 }
