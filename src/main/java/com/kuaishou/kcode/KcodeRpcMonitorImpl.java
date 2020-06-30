@@ -29,7 +29,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // 查询1数据结构
     // Map<(caller+responder), Map<timestamp, Map<(callerIp, responderIp), Span>>>
     Map<String, Map<Long, Map<String, Span>>> checkOneMap = new ConcurrentHashMap<>(128);
-    Map<Integer, List<String>> checkOneResMap = new ConcurrentHashMap<>(1000);
+    Map<Integer, List<String>> checkOneResMap = new HashMap<>(1000);
     // 查询2数据结构
     // Map<responder, Map<timestamp, Span>>
     // version2: Map<responder, Span[]> pos = [(timestamp - startTime) / 60000] Span[].length <> 45000
