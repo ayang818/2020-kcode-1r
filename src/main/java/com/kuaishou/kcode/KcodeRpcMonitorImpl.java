@@ -173,6 +173,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
     public int minuteHash(long timezone) {
         return (int) ((timezone - startTime) / 60000L);
+
     }
 
     @Override
