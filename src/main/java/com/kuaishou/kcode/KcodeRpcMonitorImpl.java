@@ -62,6 +62,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
     @Override
     public void prepare(String path) {
+        long startTime = System.currentTimeMillis();
         try {
             // 64KB，打满吞吐量
             BufferedReader bufferedReader = new BufferedReader(new FileReader(path), 64 * 1024);
@@ -113,6 +114,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 });
             });
             checkOneMap = null;
+            throw new RuntimeException(String.format("prepare cost %d", System.currentTimeMillis() - startTime));
         } catch (IOException e) {
             e.printStackTrace();
         }
