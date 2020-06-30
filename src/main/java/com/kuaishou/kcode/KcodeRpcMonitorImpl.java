@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // 行数
-    private static final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(6, 6, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+    private static final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(8, 8, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
     StringBuilder lineBuilder = new StringBuilder();
     static String[] dataArray = new String[7];
     static SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
@@ -39,6 +39,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     private static final long[] runMonthMillisCount = new long[13];
     private static final long[] runYearMonthDayCount = new long[]{0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
     private static final long[] normalYearMonthDayCount = new long[]{0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    private static final List<String> emptyRes = new ArrayList<>();
 
     static {
         Date startDate = null;
@@ -106,7 +107,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 // 遍历所有时间戳
                 timestampMap.forEach((k, ipPairMap) -> {
                     String[] split = key.split(",");
-                    Integer resKey = Objects.hash(split[0], split[1], k);
+                    Integer resKey = hash(split[0], split[1], k);
                     List<String> resList = new ArrayList<>(20);
                     ipPairMap.forEach((ipPair, span) -> resList.add(span.getRes()));
                     checkOneResMap.put(resKey, resList);
@@ -173,17 +174,22 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
     public int minuteHash(long timezone) {
         return (int) ((timezone - startTime) / 60000L);
-
     }
 
     @Override
     public List<String> checkPair(String caller, String responder, String time) {
-        Integer resKey = Objects.hash(caller, responder, parseDate(time));
+        Integer resKey = hash(caller, responder, parseDate(time));
         // String resKey = caller + responder + parseDate(time);
         List<String> res;
-        if ((res = checkOneResMap.get(resKey)) == null) {
-            res = new ArrayList<>();
-        }
+        res = checkOneResMap.get(resKey);
+        return res == null ? emptyRes : res;
+    }
+
+    public Integer hash(Object caller, Object responder, Object time) {
+        Integer res = 1;
+        res = 31 * res + caller.hashCode();
+        res = 31 * res + responder.hashCode();
+        res = 31 * res + time.hashCode();
         return res;
     }
 
@@ -279,9 +285,9 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         public void update(short costTime, String isSuccess) {
             totalTime.addAndGet(1);
             sucTime.addAndGet("true".equals(isSuccess) ? 1 : 0);
-            // synchronized (this) {
+            synchronized (this) {
                 bucket[costTime] += 1;
-            // }
+            }
         }
 
         public int getP99() {
