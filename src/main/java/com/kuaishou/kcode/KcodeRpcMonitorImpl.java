@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // 行数
-    private static final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(8, 8, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+    private static final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(10, 10, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
     StringBuilder lineBuilder = new StringBuilder();
     static String[] dataArray = new String[7];
     static SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
@@ -69,7 +69,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             BufferedReader bufferedReader = new BufferedReader(new FileReader(path), 64 * 1024);
             String line;
             // 此数值越小，任务越多，执行时间越短，尝试打满CPU 1000也炸
-            int threshold = 4000;
+            int threshold = 2000;
             String[] list = new String[threshold];
             int index = 0;
             while ((line = bufferedReader.readLine()) != null) {
