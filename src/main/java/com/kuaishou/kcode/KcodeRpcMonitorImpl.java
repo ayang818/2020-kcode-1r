@@ -34,6 +34,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // Map<responder, Map<timestamp, Span>>
     // version2: Map<responder, Span[]> pos = [(timestamp - startTime) / 60000] Span[].length <> 45000
     Map<String, Span[]> checkTwoMap = new ConcurrentHashMap<>(128);
+    Map<String, String> checkTwoResMap = new ConcurrentHashMap<>(8000);
     private static final int spanCapacity = 500000;
     private static long startTime = 0;
     private static final long[] runMonthMillisCount = new long[13];
@@ -185,37 +186,50 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         return res == null ? emptyRes : res;
     }
 
-    public Integer hash(Object caller, Object responder, Object time) {
+    public Integer hash(Object a, Object b, Object c) {
         Integer res = 1;
-        res = 31 * res + caller.hashCode();
-        res = 31 * res + responder.hashCode();
-        res = 31 * res + time.hashCode();
+        res = 31 * res + a.hashCode();
+        res = 31 * res + b.hashCode();
+        res = 31 * res + c.hashCode();
         return res;
     }
 
     @Override
     public String checkResponder(String responder, String start, String end) {
-        Span[] timestampMap = checkTwoMap.get(responder);
-        if (timestampMap == null) return "-1.00%";
-        long startMil = parseDate(start);
-        long endMil = parseDate(end);
-        double times = 0;
-        double sum = 0;
-        Span span;
-        for (long i = startMil; i <= endMil; i += 60000) {
-            span = timestampMap[minuteHash(i)];
-            if (span != null && span.sucRate != 0) {
-                sum += (span.getSucRate() * 100);
-                times++;
-            }
-        }
-        if (sum == 0) {
-            if (times == 0) {
+        // Integer hash = hash(responder, start, end);
+        String hash = responder + start + end;
+        String res;
+        if ((res = checkTwoResMap.get(hash)) == null) {
+            Span[] timestampMap = checkTwoMap.get(responder);
+            if (timestampMap == null) {
+                checkTwoResMap.put(hash, "-1.00%");
                 return "-1.00%";
             }
-            return ".00%";
+            long startMil = parseDate(start);
+            long endMil = parseDate(end);
+            double times = 0;
+            double sum = 0;
+            Span span;
+            for (long i = startMil; i <= endMil; i += 60000) {
+                span = timestampMap[minuteHash(i)];
+                if (span != null && span.sucRate != 0) {
+                    sum += (span.getSucRate() * 100);
+                    times++;
+                }
+            }
+            if (sum == 0) {
+                if (times == 0) {
+                    checkTwoResMap.put(hash, "-1.00%");
+                    return "-1.00%";
+                }
+                checkTwoResMap.put(hash, ".00%");
+                return ".00%";
+            }
+            String value = formatDouble(sum / times) + "%";
+            checkTwoResMap.put(hash , value);
+            return value;
         }
-        return formatDouble(sum / times) + "%";
+        return res;
     }
 
     public static String formatDouble(double num) {
