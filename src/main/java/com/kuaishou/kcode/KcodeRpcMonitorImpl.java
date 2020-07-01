@@ -215,6 +215,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         return res;
     }
 
+
     public static String formatDouble(double num) {
         String tmp = String.valueOf(num);
         int i = tmp.indexOf(".");
