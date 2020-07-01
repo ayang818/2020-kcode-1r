@@ -33,7 +33,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // 查询2数据结构
     // Map<responder, Map<timestamp, Span>>
     // version2: Map<responder, Span[]> pos = [(timestamp - startTime) / 60000] Span[].length <> 45000
-    Map<String, Span[]> checkTwoMap = new ConcurrentHashMap<>(128);
+    Map<String, Map<Integer, Span>> checkTwoMap = new ConcurrentHashMap<>(128);
     Map<String, String> checkTwoResMap = new ConcurrentHashMap<>(8000);
     private static final int spanCapacity = 500000;
     private static long startTime = 0;
@@ -64,7 +64,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
     @Override
     public void prepare(String path) {
-        long startTime = System.currentTimeMillis();
         try {
             // 64KB，打满吞吐量
             BufferedReader bufferedReader = new BufferedReader(new FileReader(path), 64 * 1024);
@@ -88,20 +87,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 threadPool.execute(() -> handleLines(tmp));
             }
             while (threadPool.getQueue().size() != 0) { }
-            // RandomAccessFile memoryMappedFile = new RandomAccessFile(path, "r");
-            // FileChannel channel = memoryMappedFile.getChannel();
-            // // try to use 16KB buffer
-            // ByteBuffer byteBuffer = ByteBuffer.allocateDirect(1024 * 64);
-            // int size = 0;
-            // while (channel.read(byteBuffer) != -1) {
-            //     byteBuffer.flip();
-            //     int remain = byteBuffer.remaining();
-            //     byte[] bts = new byte[remain];
-            //     byteBuffer.get(bts, 0, remain);
-            //     byteBuffer.clear();
-            //     processBlock(bts);
-            //     size += 64;
-            // }
             // 单线程开始收集答案
             // 遍历所有主被服务对
             checkOneMap.forEach((key, timestampMap) -> {
@@ -109,6 +94,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 timestampMap.forEach((k, ipPairMap) -> {
                     String[] split = key.split(",");
                     Integer resKey = hash(split[0], split[1], k);
+                    // String resKey = split[0] + split[1] + k;
                     List<String> resList = new ArrayList<>(20);
                     ipPairMap.forEach((ipPair, span) -> resList.add(span.getRes()));
                     checkOneResMap.put(resKey, resList);
@@ -142,14 +128,11 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         span.update(costTime, isSuccess);
 
         // 记录第二种查询数据
-        Span[] spans;
+        Map<Integer, Span> spans;
         Span dataLessSpan;
-        spans = checkTwoMap.computeIfAbsent(responderService, (v) -> new Span[spanCapacity]);
+        spans = checkTwoMap.computeIfAbsent(responderService, (v) -> new ConcurrentHashMap<>());
         int hash = minuteHash(fullMinuteSecond);
-        if ((dataLessSpan = spans[hash]) == null) {
-            dataLessSpan = new Span();
-            spans[hash] = dataLessSpan;
-        }
+        dataLessSpan = spans.computeIfAbsent(hash, (v) -> new Span());
         int tmpSucTime = dataLessSpan.sucTime.addAndGet("true".equals(isSuccess) ? 1 : 0);
         int tmpTotalTime = dataLessSpan.totalTime.addAndGet(1);
         dataLessSpan.sucRate = ((double) tmpSucTime / tmpTotalTime);
@@ -200,7 +183,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         String hash = responder + start + end;
         String res;
         if ((res = checkTwoResMap.get(hash)) == null) {
-            Span[] timestampMap = checkTwoMap.get(responder);
+            Map<Integer, Span> timestampMap = checkTwoMap.get(responder);
             if (timestampMap == null) {
                 checkTwoResMap.put(hash, "-1.00%");
                 return "-1.00%";
@@ -211,7 +194,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             double sum = 0;
             Span span;
             for (long i = startMil; i <= endMil; i += 60000) {
-                span = timestampMap[minuteHash(i)];
+                span = timestampMap.get(minuteHash(i)) ;
                 if (span != null && span.sucRate != 0) {
                     sum += (span.getSucRate() * 100);
                     times++;
@@ -226,7 +209,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                 return ".00%";
             }
             String value = formatDouble(sum / times) + "%";
-            checkTwoResMap.put(hash , value);
+            checkTwoResMap.put(hash, value);
             return value;
         }
         return res;
@@ -333,43 +316,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             }
             int p99 = getP99();
             return ipPair + "," + strSucRate + "%," + p99;
-        }
-    }
-
-    private void processBlock(byte[] block) {
-        int lastLF = -1;
-        int splitterTime = 0;
-        int prePos = -1;
-        boolean firstLine = true;
-        String line;
-        for (int i = 0; i < block.length; i++) {
-            byte bt = block[i];
-            // 逗号
-            if (bt == 44) {
-                dataArray[splitterTime] = new String(block, prePos + 1, i - prePos - 1);
-                prePos = i;
-                splitterTime += 1;
-            }
-            // 换行符
-            if (bt == 10) {
-                // 处理完整行
-                if (!firstLine) {
-                    dataArray[splitterTime] = new String(block, prePos + 1, i - prePos - 1);
-                    handleLine(dataArray);
-                } else {
-                    lineBuilder.append(new String(block, 0, i));
-                    line = lineBuilder.toString();
-                    handleLine(line);
-                    lineBuilder.delete(0, lineBuilder.length());
-                    firstLine = false;
-                }
-                lastLF = i;
-                splitterTime = 0;
-                prePos = i;
-            }
-        }
-        if (lastLF + 1 < block.length) {
-            lineBuilder.append(new String(block, lastLF + 1, block.length - lastLF - 1));
         }
     }
 }
