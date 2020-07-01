@@ -251,7 +251,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         return res;
     }
 
-
     static class Span {
         AtomicInteger sucTime;
         AtomicInteger totalTime;
