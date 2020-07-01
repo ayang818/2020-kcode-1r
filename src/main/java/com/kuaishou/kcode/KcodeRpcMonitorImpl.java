@@ -97,7 +97,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
                     checkOneResMap.put(resKey, resList);
                 });
             });
-            checkOneMap = null;
+            // checkOneMap = null;
             // throw new RuntimeException(String.format("prepare cost %d", System.currentTimeMillis() - startTime));
         } catch (IOException e) {
             e.printStackTrace();
@@ -271,7 +271,6 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             totalTime = new AtomicInteger(0);
             bucket = new int[320];
         }
-
 
         /**
          * thread safe
