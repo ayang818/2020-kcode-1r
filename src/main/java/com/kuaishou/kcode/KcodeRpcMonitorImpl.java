@@ -31,7 +31,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // Map<responder, Map<timestamp, Span>>
     // version2: Map<responder, Span[]> pos = [(timestamp - startTime) / 60000] Span[].length <> 45000
     Map<String, Span[]> checkTwoMap = new ConcurrentHashMap<>(128);
-    Map<String, String> checkTwoResMap = new ConcurrentHashMap<>(8000);
+    Map<Integer, String> checkTwoResMap = new ConcurrentHashMap<>(8000);
     private static final int spanCapacity = 500000;
     private static long startTime = 0;
     private static final long[] runMonthMillisCount = new long[13];
@@ -171,16 +171,16 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
 
     public Integer hash(Object a, Object b, Object c) {
         Integer res = 1;
-        res = 31 * res + a.hashCode();
-        res = 31 * res + b.hashCode();
-        res = 31 * res + c.hashCode();
+        res = 1313 * res + a.hashCode();
+        res = 1313 * res + b.hashCode();
+        res = 1313 * res + c.hashCode();
         return res;
     }
 
     @Override
     public String checkResponder(String responder, String start, String end) {
-        // Integer hash = hash(responder, start, end);
-        String hash = responder + start + end;
+        Integer hash = hash(responder, start, end);
+        // String hash = responder + start + end;
         String res;
         if ((res = checkTwoResMap.get(hash)) == null) {
             Span[] timestampMap = checkTwoMap.get(responder);
