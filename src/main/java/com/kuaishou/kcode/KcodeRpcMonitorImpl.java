@@ -21,9 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // 行数
-    private static final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(10, 10, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
-    StringBuilder lineBuilder = new StringBuilder();
-    static String[] dataArray = new String[7];
+    private static final ThreadPoolExecutor threadPool = new ThreadPoolExecutor(16, 16, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
     static SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
     // 数据的所有特点 servicePair极少；timestamp极少，代表每分钟；ipPair也很少，集中在30左右；多的就是调用次数
     // 查询1数据结构
@@ -33,7 +31,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
     // 查询2数据结构
     // Map<responder, Map<timestamp, Span>>
     // version2: Map<responder, Span[]> pos = [(timestamp - startTime) / 60000] Span[].length <> 45000
-    Map<String, Map<Integer, Span>> checkTwoMap = new ConcurrentHashMap<>(128);
+    Map<String, Span[]> checkTwoMap = new ConcurrentHashMap<>(128);
     Map<String, String> checkTwoResMap = new ConcurrentHashMap<>(8000);
     private static final int spanCapacity = 500000;
     private static long startTime = 0;
@@ -69,7 +67,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             BufferedReader bufferedReader = new BufferedReader(new FileReader(path), 64 * 1024);
             String line;
             // 此数值越小，任务越多，执行时间越短，尝试打满CPU 1000也炸
-            int threshold = 2000;
+            int threshold = 4000;
             String[] list = new String[threshold];
             int index = 0;
             while ((line = bufferedReader.readLine()) != null) {
@@ -128,11 +126,14 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         span.update(costTime, isSuccess);
 
         // 记录第二种查询数据
-        Map<Integer, Span> spans;
+        Span[] spans;
         Span dataLessSpan;
-        spans = checkTwoMap.computeIfAbsent(responderService, (v) -> new ConcurrentHashMap<>());
+        spans = checkTwoMap.computeIfAbsent(responderService, (v) -> new Span[spanCapacity]);
         int hash = minuteHash(fullMinuteSecond);
-        dataLessSpan = spans.computeIfAbsent(hash, (v) -> new Span());
+        if ((dataLessSpan = spans[hash]) == null) {
+            dataLessSpan = new Span();
+            spans[hash] = dataLessSpan;
+        }
         int tmpSucTime = dataLessSpan.sucTime.addAndGet("true".equals(isSuccess) ? 1 : 0);
         int tmpTotalTime = dataLessSpan.totalTime.addAndGet(1);
         dataLessSpan.sucRate = ((double) tmpSucTime / tmpTotalTime);
@@ -183,7 +184,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
         String hash = responder + start + end;
         String res;
         if ((res = checkTwoResMap.get(hash)) == null) {
-            Map<Integer, Span> timestampMap = checkTwoMap.get(responder);
+            Span[] timestampMap = checkTwoMap.get(responder);
             if (timestampMap == null) {
                 checkTwoResMap.put(hash, "-1.00%");
                 return "-1.00%";
@@ -194,7 +195,7 @@ public class KcodeRpcMonitorImpl implements KcodeRpcMonitor {
             double sum = 0;
             Span span;
             for (long i = startMil; i <= endMil; i += 60000) {
-                span = timestampMap.get(minuteHash(i)) ;
+                span = timestampMap[minuteHash(i)] ;
                 if (span != null && span.sucRate != 0) {
                     sum += (span.getSucRate() * 100);
                     times++;
