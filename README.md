@@ -1,3 +1,6 @@
+# 赛题分析
+代码分析: https://blog.ayang818.top/kcode1/
+
 # 初赛赛题
 **在开始coding前请仔细阅读以下内容**
 
